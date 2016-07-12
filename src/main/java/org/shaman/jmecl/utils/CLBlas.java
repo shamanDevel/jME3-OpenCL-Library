@@ -25,18 +25,20 @@ public final class CLBlas<T extends Number> {
 	private static class ElementSpecs {
 		private final int elementSize;
 		private final String clType;
-		private ElementSpecs(int elementSize, String clType) {
+		private final boolean floatType;
+		private ElementSpecs(int elementSize, String clType, boolean floatType) {
 			this.elementSize = elementSize;
 			this.clType = clType;
+			this.floatType = floatType;
 		}
 	}
 	private static final Map<Class<? extends Number>, ElementSpecs> specs
 			= new HashMap<>();
 	static {
-		specs.put(Float.class, new ElementSpecs(4, "float"));
-		specs.put(Double.class, new ElementSpecs(8, "double"));
-		specs.put(Integer.class, new ElementSpecs(4, "int"));
-		specs.put(Long.class, new ElementSpecs(8, "long"));
+		specs.put(Float.class, new ElementSpecs(4, "float", true));
+		specs.put(Double.class, new ElementSpecs(8, "double", true));
+		specs.put(Integer.class, new ElementSpecs(4, "int", false));
+		specs.put(Long.class, new ElementSpecs(8, "long", false));
 	}
 	
 	private final Context clContext;
@@ -64,7 +66,8 @@ public final class CLBlas<T extends Number> {
 		Program p = settings.getProgramCache().loadFromCache(cacheID);
 		if (p == null) {
 			StringBuilder includes = new StringBuilder();
-			includes.append("#define TYPE ").append(es.clType).append("\n\n");
+			includes.append("#define TYPE ").append(es.clType).append("\n");
+			includes.append("#define IS_FLOAT_TYPE ").append(es.floatType ? 1 : 0).append("\n\n");
 			p = clContext.createProgramFromSourceFilesWithInclude(
 					settings.getAssetManager(), includes.toString(), FILE);
 			//settings.getProgramCache().saveToCache(cacheID, p);
@@ -136,10 +139,10 @@ public final class CLBlas<T extends Number> {
 		DIV,
 		DIV_INV,
 		ABS,
-		EXP,
-		LOG,
-		POW,
-		POW_INV
+		EXP,  //will run with double-precision for integer types
+		LOG,  // "
+		POW,  // "
+		POW_INV  // "
 	}
 	
 	public Event map(Buffer b, MapOp op, T arg, Buffer dest, 
