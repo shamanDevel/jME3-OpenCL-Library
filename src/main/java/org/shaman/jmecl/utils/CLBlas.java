@@ -88,6 +88,7 @@ public final class CLBlas<T extends Number> {
 	private final Kernel axpyKernel;
 	private final EnumMap<MapOp, Kernel> mapKernels;
 	private final EnumMap<PreReduceOp, EnumMap<ReduceOp, Kernel>> reduceKernels;
+	private final EnumMap<MergeOp, EnumMap<ReduceOp, Kernel>> reduce2Kernels;
 	private Buffer tmpMem;
 	
 	private CLBlas(OpenCLSettings settings, Class<T> numberType) {
@@ -135,6 +136,14 @@ public final class CLBlas<T extends Number> {
 				map.put(op2, p.createKernel("Reduce_"+op1.name()+"_"+op2.name()).register());
 			}
 			reduceKernels.put(op1, map);
+		}
+		reduce2Kernels = new EnumMap<>(MergeOp.class);
+		for (MergeOp op1 : MergeOp.values()) {
+			EnumMap<ReduceOp, Kernel> map = new EnumMap<>(ReduceOp.class);
+			for (ReduceOp op2 : ReduceOp.values()) {
+				map.put(op2, p.createKernel("Reduce2_"+op1.name()+"_"+op2.name()).register());
+			}
+			reduce2Kernels.put(op1, map);
 		}
 	}
 	
@@ -354,20 +363,60 @@ public final class CLBlas<T extends Number> {
 		return reduce(b, preReduceOp, reduceOp, b.getSize()/elementSize, result);
 	}
 	
-	public ReduceResult reduce2(Buffer a, Buffer b, MergeOp mergeOp,
-			PreReduceOp preReduceOp, ReduceOp reduceOp,
+	public ReduceResult reduce2(Buffer a, Buffer b, MergeOp mergeOp, ReduceOp reduceOp,
 			long size, long offsetA, long offsetB, long stepA, long stepB,
 			ReduceResult result) {
-		throw new UnsupportedOperationException("not supported yet");
+		if (size > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("buffer is too big, only 2^31 elements supported");
+		}
+		
+		if (result == null) {
+			result = new ReduceResult();
+		}
+		result.result = ensureBufferSize(result.result, elementSize);
+		
+		int[] sizes = new int[2];
+		getReduceWorkSize((int) size, sizes);
+		int workGroupSize = sizes[0];
+		int numWorkGroups = sizes[1];
+		int globalWorkSize = numWorkGroups * workGroupSize;
+
+		tmpMem = ensureBufferSize(tmpMem, elementSize * numWorkGroups);
+		
+		Kernel kernelOp1 = reduce2Kernels.get(mergeOp).get(reduceOp);
+		Kernel kernelOp2 = reduceKernels.get(PreReduceOp.NONE).get(reduceOp);
+		
+		kernelOp1.Run2NoEvent(clCommandQueue, new Kernel.WorkSize(globalWorkSize), new Kernel.WorkSize(workGroupSize), 
+					a, b, new Kernel.LocalMem(elementSize), (int) size, tmpMem, (int) offsetA, (int) stepA, (int) offsetB, (int) stepB);
+		
+		size = numWorkGroups;
+		while (size > 1) {
+			getReduceWorkSize((int) size, sizes);
+			workGroupSize = sizes[0];
+			numWorkGroups = sizes[1];
+			globalWorkSize = numWorkGroups * workGroupSize;
+			
+			kernelOp2.Run2NoEvent(clCommandQueue, new Kernel.WorkSize(globalWorkSize), new Kernel.WorkSize(workGroupSize), 
+						tmpMem, new Kernel.LocalMem(elementSize), (int) size, tmpMem, (int) 0, (int) 1);
+			
+			size = numWorkGroups;
+		}
+		
+		result.event = tmpMem.copyToAsync(clCommandQueue, result.result, elementSize).register();
+		return result;
 	}
 	public ReduceResult reduce2(Buffer a, Buffer b, MergeOp mergeOp,
-			PreReduceOp preReduceOp, ReduceOp reduceOp, long size, ReduceResult result) {
-		return reduce2(a, b, mergeOp, preReduceOp, reduceOp, size, 0, 0, 1, 1, result);
+			ReduceOp reduceOp, long size, ReduceResult result) {
+		return reduce2(a, b, mergeOp, reduceOp, size, 0, 0, 1, 1, result);
 	}
 	public ReduceResult reduce2(Buffer a, Buffer b, MergeOp mergeOp,
-			PreReduceOp preReduceOp, ReduceOp reduceOp,	ReduceResult result) {
+			ReduceOp reduceOp,	ReduceResult result) {
 		long size = Math.min(a.getSize(), b.getSize()) / elementSize;
-		return reduce2(a, b, mergeOp, preReduceOp, reduceOp, size, result);
+		return reduce2(a, b, mergeOp, reduceOp, size, result);
+	}
+	
+	public ReduceResult dotProduct(Buffer a, Buffer b, ReduceResult result) {
+		return reduce2(a, b, MergeOp.MUL, ReduceOp.ADD, result);
 	}
 	
 	@SuppressWarnings("unchecked")

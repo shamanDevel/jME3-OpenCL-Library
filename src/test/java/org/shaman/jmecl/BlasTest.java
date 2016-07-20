@@ -10,6 +10,7 @@ import com.jme3.asset.DesktopAssetManager;
 import com.jme3.opencl.*;
 import java.nio.ByteBuffer;
 import java.util.Random;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.junit.After;
 import org.junit.Before;
@@ -82,6 +83,9 @@ public class BlasTest {
 	
 	private int randInt(int min, int max) {
 		return RAND.nextInt(max-min) + min;
+	}
+	private double randDouble(double min, double max) {
+		return RAND.nextDouble()*(max-min) + min;
 	}
 	
 	@Test
@@ -202,6 +206,55 @@ public class BlasTest {
 			assertEquals(maxValue, (int) blas.getReduceResultBlocking(result));
 			
 			x.release();
+		}
+	}
+	
+	@Test
+	public void testReduce2() {
+		CLBlas<Double> blas = CLBlas.get(settings, Double.class);
+		
+		int performanceSize = 238561;
+		int performanceCount = 1000;
+		int sizes[] = {4, 25, 246, 1<<12, performanceSize};
+		CLBlas.ReduceResult result = new CLBlas.ReduceResult();
+		for (int size : sizes) {
+			Buffer a = clContext.createBuffer(size * 8);
+			Buffer b = clContext.createBuffer(size * 8);
+			
+			//test dot-product
+			ByteBuffer bufA = a.map(clCommandQueue, MappingAccess.MAP_WRITE_ONLY);
+			ByteBuffer bufB = b.map(clCommandQueue, MappingAccess.MAP_WRITE_ONLY);
+			bufA.rewind();
+			bufB.rewind();
+			double dotP = 0;
+			for (int i=0; i<size; ++i) {
+				double va = randDouble(-1, 1);
+				double vb = randDouble(-1, 1);
+				dotP += va * vb;
+				bufA.putDouble(va);
+				bufB.putDouble(vb);
+			}
+			bufA.rewind();
+			bufB.rewind();
+			a.unmap(clCommandQueue, bufA);
+			b.unmap(clCommandQueue, bufB);
+			result = blas.reduce2(a, b, CLBlas.MergeOp.MUL, CLBlas.ReduceOp.ADD, result);
+			assertEquals(dotP, blas.getReduceResultBlocking(result), Math.abs(dotP) * 10);
+			
+			if (size == performanceSize) {
+				//measure execution speed
+				clCommandQueue.finish();
+				long timeA = System.nanoTime();
+				for (int i=0; i<performanceCount; ++i) {
+					result = blas.reduce2(a, b, CLBlas.MergeOp.MUL, CLBlas.ReduceOp.ADD, result);
+				}
+				long timeB = System.nanoTime();
+				LOG.log(Level.INFO, "Time to execute one dot-product of vectors of size {0}: {1} ns", new Object[]{performanceSize, (timeB-timeA)/1000000.0});
+				clCommandQueue.finish();
+			}
+			
+			a.release();
+			b.release();
 		}
 	}
 	

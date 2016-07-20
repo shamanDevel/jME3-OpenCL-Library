@@ -120,3 +120,91 @@ REDUCE_TEMPLATE(fmax(a*a,b) , fmax(a,b) , TYPE_MIN, SQUARE_MAX)
 REDUCE_TEMPLATE(min(a*a,b) , min(a,b) , TYPE_MAX, SQUARE_MIN)
 REDUCE_TEMPLATE(max(a*a,b) , max(a,b) , TYPE_MIN, SQUARE_MAX)
 #endif
+
+#define REDUCE2_TEMPLATE(op1, op2, neutralElement, name) \
+	__kernel void Reduce2_##name (__global TYPE* buffer1, __global TYPE* buffer2, __local TYPE* scratch, __const int length, __global TYPE* result, __const int offset1, __const int step1, __const int offset2, __const int step2) \
+	{ \
+		int global_index = get_global_id(0); \
+		TYPE accumulator = neutralElement; \
+		while (global_index < length) \
+		{ \
+			TYPE a = buffer1[offset1 + step1 * global_index]; \
+			TYPE b = buffer2[offset2 + step2 * global_index]; \
+			TYPE elem = op1; \
+			a = elem; \
+			b = accumulator; \
+			accumulator = op2; \
+			global_index += get_global_size(0); \
+		} \
+		int local_index = get_local_id(0); \
+		scratch[local_index] = accumulator; \
+		barrier(CLK_LOCAL_MEM_FENCE); \
+		for (int offset = get_local_size(0) / 2; offset > 0; offset = offset / 2) \
+		{ \
+			if (local_index < offset) \
+			{ \
+				TYPE a = scratch[local_index + offset]; \
+				TYPE b = scratch[local_index]; \
+				scratch[local_index] = op2; \
+			} \
+			barrier(CLK_LOCAL_MEM_FENCE); \
+		} \
+		if (local_index == 0) \
+		{ \
+			result[get_group_id(0)] = scratch[0]; \
+		} \
+	}
+
+REDUCE2_TEMPLATE(a+b , a+b , 0, ADD_ADD)
+REDUCE2_TEMPLATE(a+b , a*b , 1, ADD_MUL)
+#if IS_FLOAT_TYPE==1
+REDUCE2_TEMPLATE(a+b , fmin(a,b) , TYPE_MAX, ADD_MIN)
+REDUCE2_TEMPLATE(a+b , fmax(a,b) , TYPE_MIN, ADD_MAX)
+#else
+REDUCE2_TEMPLATE(a+b , min(a,b) , TYPE_MAX, ADD_MIN)
+REDUCE2_TEMPLATE(a+b , max(a,b) , TYPE_MIN, ADD_MAX)
+#endif
+
+REDUCE2_TEMPLATE(a-b , a+b , 0, SUB_ADD)
+REDUCE2_TEMPLATE(a-b , a*b , 1, SUB_MUL)
+#if IS_FLOAT_TYPE==1
+REDUCE2_TEMPLATE(a-b , fmin(a,b) , TYPE_MAX, SUB_MIN)
+REDUCE2_TEMPLATE(a-b , fmax(a,b) , TYPE_MIN, SUB_MAX)
+#else
+REDUCE2_TEMPLATE(a-b , min(a,b) , TYPE_MAX, SUB_MIN)
+REDUCE2_TEMPLATE(a-b , max(a,b) , TYPE_MIN, SUB_MAX)
+#endif
+
+REDUCE2_TEMPLATE(a*b , a+b , 0, MUL_ADD)
+REDUCE2_TEMPLATE(a*b , a*b , 1, MUL_MUL)
+#if IS_FLOAT_TYPE==1
+REDUCE2_TEMPLATE(a*b , fmin(a,b) , TYPE_MAX, MUL_MIN)
+REDUCE2_TEMPLATE(a*b , fmax(a,b) , TYPE_MIN, MUL_MAX)
+#else
+REDUCE2_TEMPLATE(a*b , min(a,b) , TYPE_MAX, MUL_MIN)
+REDUCE2_TEMPLATE(a*b , max(a,b) , TYPE_MIN, MUL_MAX)
+#endif
+
+#if IS_FLOAT_TYPE==1
+REDUCE2_TEMPLATE(fmin(a,b) , a+b , 0, MIN_ADD)
+REDUCE2_TEMPLATE(fmin(a,b) , a*b , 1, MIN_MUL)
+REDUCE2_TEMPLATE(fmin(a,b) , fmin(a,b) , TYPE_MAX, MIN_MIN)
+REDUCE2_TEMPLATE(fmin(a,b) , fmax(a,b) , TYPE_MIN, MIN_MAX)
+#else
+REDUCE2_TEMPLATE(min(a,b) , a+b , 0, MIN_ADD)
+REDUCE2_TEMPLATE(min(a,b) , a*b , 1, MIN_MUL)
+REDUCE2_TEMPLATE(min(a,b) , min(a,b) , TYPE_MAX, MIN_MIN)
+REDUCE2_TEMPLATE(min(a,b) , max(a,b) , TYPE_MIN, MIN_MAX)
+#endif
+
+#if IS_FLOAT_TYPE==1
+REDUCE2_TEMPLATE(fmax(a,b) , a+b , 0, MAX_ADD)
+REDUCE2_TEMPLATE(fmax(a,b) , a*b , 1, MAX_MUL)
+REDUCE2_TEMPLATE(fmax(a,b) , fmin(a,b) , TYPE_MAX, MAX_MIN)
+REDUCE2_TEMPLATE(fmin(a,b) , fmax(a,b) , TYPE_MIN, MAX_MAX)
+#else
+REDUCE2_TEMPLATE(max(a,b) , a+b , 0, MAX_ADD)
+REDUCE2_TEMPLATE(max(a,b) , a*b , 1, MAX_MUL)
+REDUCE2_TEMPLATE(max(a,b) , min(a,b) , TYPE_MAX, MAX_MIN)
+REDUCE2_TEMPLATE(max(a,b) , max(a,b) , TYPE_MIN, MAX_MAX)
+#endif
