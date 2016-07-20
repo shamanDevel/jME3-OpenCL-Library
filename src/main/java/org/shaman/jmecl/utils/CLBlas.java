@@ -16,6 +16,20 @@ import org.shaman.jmecl.OpenCLSettings;
 
 /**
  * Collection of utitlity and blas-level-1 routines on primitive types.
+ * <p>
+ * All operations take the following arguments:
+ * <ul>
+ *  <li>{@code size} the size or number of elements that the operation should process </li>
+ *  <li>{@code step} the step size in the array, must be non-zero </li>
+ *  <li>{@code offset} the offset into the array, must be non-negative </li>
+ * </ul>
+ * The passed buffers are adressed as they would be arrays of type {@code T}:
+ * {@code T val = buffer[index * step + offset]} with {@code index} ranging from {@code 0}
+ * to {@code size-1}. <br>
+ * It must be ensured that the passed buffer large enough so that no element outside
+ * the bounds is accessed.
+ * 
+ * 
  * @author Sebastian Weiss
  * @param <T> the number type, Float, Double, Integer and Long are supported
  */
@@ -194,31 +208,73 @@ public final class CLBlas<T extends Number> {
 		}
 	}
 	
+	/**
+	 * Returns the number of bytes needed for the specified number class.
+	 * For the supported number tpyes, this method return:
+	 * <ul>
+	 *  <li>Float: 4 </li>
+	 *  <li>Double: 8 </li>
+	 *  <li>Integer: 4 </li>
+	 *  <li>Long: 8 </li>
+	 * </ul>
+	 * @return the count of bytes needed to represent the number class
+	 * @see #get(org.shaman.jmecl.OpenCLSettings, java.lang.Class) 
+	 */
+	public int getElementSize() {
+		return elementSize;
+	}
+	
+	/**
+	 * Fills the specified buffer with a constant value.
+	 * @param b the buffer to fill
+	 * @param val the value
+	 * @param size the size/count of elements to fill
+	 * @param offset the offset into the buffer
+	 * @param step the step size
+	 * @return the event object, must be released manually
+	 */
 	public Event fill(Buffer b, T val, long size, long offset, long step) {
 		Kernel.WorkSize ws = new Kernel.WorkSize(size);
 		return fillKernel.Run1(clCommandQueue, ws, b, val, offset, step);
 	}
+	/**
+	 * Fills a part of the buffer.
+	 * Convenient method, calls {@code fill(b, val, size, 0, 1)}
+	 * @param b the buffer to fill
+	 * @param val the value
+	 * @param size the size
+	 * @return the event, must be released manually
+	 * @see #fill(com.jme3.opencl.Buffer, java.lang.Number, long, long, long) 
+	 */
 	public Event fill(Buffer b, T val, long size) {
 		return fill(b, val, size, 0, 1);
 	}
+	/**
+	 * Fills the whole buffer.
+	 * Convenient method, calls {@code fill(b, val, b.getSize()/getElementSize(), 0, 1}
+	 * @param b the buffer to fill
+	 * @param val the value
+	 * @return the event, must be released manually
+	 * @see #fill(com.jme3.opencl.Buffer, java.lang.Number, long, long, long) 
+	 */
 	public Event fill(Buffer b, T val) {
 		return fill(b, val, b.getSize()/elementSize);
 	}
 	
 	/**
 	 * Computes {@code dest[i] = a*x[i] + y[i]}.
-	 * @param x
-	 * @param a
-	 * @param y
-	 * @param dest
-	 * @param size
-	 * @param offsetX
-	 * @param offsetY
-	 * @param offsetDest
-	 * @param stepX
-	 * @param stepY
-	 * @param stepDest
-	 * @return 
+	 * @param a the scalar value multiplied with x
+	 * @param x the first buffer
+	 * @param y the second buffer
+	 * @param dest the destination buffer
+	 * @param size the number of elements to process
+	 * @param offsetX offset into the x buffer
+	 * @param offsetY offset into the y buffer
+	 * @param offsetDest offset into the dest buffer
+	 * @param stepX step size in the x buffer
+	 * @param stepY step size in the y buffer
+	 * @param stepDest step size in the dest buffer
+	 * @return the event, must be released manually
 	 */
 	public Event axpy(T a, Buffer x, Buffer y, Buffer dest, 
 			long size, long offsetX, long offsetY, long offsetDest,
@@ -227,55 +283,174 @@ public final class CLBlas<T extends Number> {
 		return axpyKernel.Run1(clCommandQueue, ws, a, x, y, dest, 
 				offsetX, offsetY, offsetDest, stepX, stepY, stepDest);
 	}
+	/**
+	 * Computes {@code dest[i] = a*x[i] + y[i]} on a part of the buffers.
+	 * Calls {@code axpy(a, x, y, dest, size, 0, 0, 0, 1, 1, 1)}.
+	 * @param a the scalar value multiplied with x
+	 * @param x the first buffer
+	 * @param y the second buffer
+	 * @param dest the destination buffer
+	 * @param size the number of elements to process
+	 * @return the event, must be released manually
+	 * @see #axpy(java.lang.Number, com.jme3.opencl.Buffer, com.jme3.opencl.Buffer, com.jme3.opencl.Buffer, long, long, long, long, long, long, long) 
+	 */
 	public Event axpy(T a, Buffer x, Buffer y, Buffer dest, long size) {
 		return axpy(a, x, y, dest, size, 0, 0, 0, 1, 1, 1);
 	}
+	/**
+	 * Computes {@code dest[i] = a*x[i] + y[i]} on the whole buffer.
+	 * @param a the scalar value multiplied with x
+	 * @param x the first buffer
+	 * @param y the second buffer
+	 * @param dest the destination buffer
+	 * @return the event, must be released manually
+	 * @see #axpy(java.lang.Number, com.jme3.opencl.Buffer, com.jme3.opencl.Buffer, com.jme3.opencl.Buffer, long, long, long, long, long, long, long) 
+	 */
 	public Event axpy(T a, Buffer x, Buffer y, Buffer dest) {
 		long size = Math.min(Math.min(dest.getSize(), x.getSize()), y.getSize());
 		size /= elementSize;
 		return axpy(a, x, y, dest, size);
 	}
 	
+	/**
+	 * The available mapping operations for 
+	 * {@link #map(com.jme3.opencl.Buffer, org.shaman.jmecl.utils.CLBlas.MapOp, java.lang.Number, com.jme3.opencl.Buffer, long, long, long, long, long) }.
+	 * Let {@code x} be the input from the input buffer, {@code a} the additional
+	 * argument and {@code z} be the output.
+	 */
 	public static enum MapOp {
+		/**
+		 * {@code z=a}
+		 */
 		SET,
+		/**
+		 * {@code z=x+a}
+		 */
 		ADD,
+		/**
+		 * {@code z=x-a}
+		 */
 		SUB,
+		/**
+		 * {@code z=x*a}
+		 */
 		MUL,
+		/**
+		 * {@code z=a-x}
+		 */
 		SUB_INV,
+		/**
+		 * {@code z=a/x}
+		 */
 		DIV,
+		/**
+		 * {@code z=x/a}
+		 */
 		DIV_INV,
+		/**
+		 * {@code z=abs(x)}
+		 */
 		ABS,
-		EXP,  //will run with double-precision for integer types
-		LOG,  // "
-		POW,  // "
-		POW_INV  // "
+		/**
+		 * {@code z=exp(x)}, computed with float-precision on integer types
+		 */
+		EXP,
+		/**
+		 * {@code z=log(x)/log(a)}, computed with float-precision on integer types
+		 */
+		LOG,
+		/**
+		 * {@code z=x^a}, computed with float-precision on integer types
+		 */
+		POW,
+		/**
+		 * {@code z=a^x}, computed with float-precision on integer types
+		 */
+		POW_INV
 	}
 	
+	/**
+	 * Performs a map operation / transformation on the specified buffer.
+	 * @param b the buffer
+	 * @param op the map operation
+	 * @param arg an additional argument to the operation
+	 * @param dest the destination buffer
+	 * @param size the count of elements to process
+	 * @param offsetB offset into the source buffer
+	 * @param offsetDest offset into the destination buffer
+	 * @param stepB step size in the source buffer
+	 * @param stepDest step size in the destination buffer
+	 * @return the event, must be released manually
+	 * @see MapOp
+	 */
 	public Event map(Buffer b, MapOp op, T arg, Buffer dest, 
 			long size, long offsetB, long offsetDest, long stepB, long stepDest) {
 		Kernel.WorkSize ws = new Kernel.WorkSize(size);
 		Kernel kernel = mapKernels.get(op);
 		return kernel.Run1(clCommandQueue, ws, b, arg, dest, offsetB, offsetDest, stepB, stepDest);
 	}
+	/**
+	 * Performs a map operation / transformation on a part of the buffer
+	 * @param b the input buffer
+	 * @param op the map operation
+	 * @param arg an additional argument
+	 * @param dest the destination buffer
+	 * @param size the count of elements to process
+	 * @return the event, must be released manually
+	 * @see #map(com.jme3.opencl.Buffer, org.shaman.jmecl.utils.CLBlas.MapOp, java.lang.Number, com.jme3.opencl.Buffer, long, long, long, long, long) 
+	 * @see MapOp
+	 */
 	public Event map(Buffer b, MapOp op, T arg, Buffer dest, long size) {
 		return map(b, op, arg, dest, size,  0, 0, 1, 1);
 	}
+	/**
+	 * Performs a map operation / transformation on the whole buffer
+	 * @param b the input buffer
+	 * @param op the map operation
+	 * @param arg an additional argument
+	 * @param dest the destination buffer
+	 * @return the event, must be released manually
+	 * @see #map(com.jme3.opencl.Buffer, org.shaman.jmecl.utils.CLBlas.MapOp, java.lang.Number, com.jme3.opencl.Buffer, long, long, long, long, long) 
+	 * @see MapOp
+	 */
 	public Event map(Buffer b, MapOp op, T arg, Buffer dest) {
 		long size = Math.min(b.getSize(), dest.getSize()) / elementSize;
 		return map(b, op, arg, dest, size);
 	}
 	
+	/**
+	 * Operation applied to each element before it is reduced.
+	 * @see #reduce(com.jme3.opencl.Buffer, org.shaman.jmecl.utils.CLBlas.PreReduceOp, org.shaman.jmecl.utils.CLBlas.ReduceOp, long, long, long, org.shaman.jmecl.utils.CLBlas.ReduceResult)
+	 */
 	public static enum PreReduceOp {
+		/**
+		 * No modification, pass through
+		 */
 		NONE,
+		/**
+		 * The absolute value is taken
+		 */
 		ABS,
+		/**
+		 * The input is squared
+		 */
 		SQUARE
 	}
+	/**
+	 * The reduce operation
+	 * @see #reduce(com.jme3.opencl.Buffer, org.shaman.jmecl.utils.CLBlas.PreReduceOp, org.shaman.jmecl.utils.CLBlas.ReduceOp, long, long, long, org.shaman.jmecl.utils.CLBlas.ReduceResult) 
+	 * @see #reduce2(com.jme3.opencl.Buffer, com.jme3.opencl.Buffer, org.shaman.jmecl.utils.CLBlas.MergeOp, org.shaman.jmecl.utils.CLBlas.ReduceOp, long, long, long, long, long, org.shaman.jmecl.utils.CLBlas.ReduceResult) 
+	 */
 	public static enum ReduceOp {
 		ADD,
 		MUL,
 		MIN,
 		MAX
 	}
+	/**
+	 * Operation to merge two buffers together before the result is reduced.
+	 * @see #reduce2(com.jme3.opencl.Buffer, com.jme3.opencl.Buffer, org.shaman.jmecl.utils.CLBlas.MergeOp, org.shaman.jmecl.utils.CLBlas.ReduceOp, long, long, long, long, long, org.shaman.jmecl.utils.CLBlas.ReduceResult) 
+	 */
 	public static enum MergeOp {
 		ADD,
 		SUB,
@@ -284,6 +459,16 @@ public final class CLBlas<T extends Number> {
 		MAX
 	}
 	
+	/**
+	 * Structure storing the result of a reduce operation.
+	 * This class captures the asynchron result of the operation in a buffer.
+	 * <br>
+	 * The buffer only stores one single value. You can either pass it directly
+	 * as an argument to another kernel, or read to value by {@link #getReduceResultBlocking(org.shaman.jmecl.utils.CLBlas.ReduceResult) }.
+	 * <br>
+	 * Instances of this class can be used multiple times, just pass it again
+	 * to a reduce method.
+	 */
 	public static class ReduceResult {
 		private Event event;
 		private Buffer result;
@@ -291,10 +476,18 @@ public final class CLBlas<T extends Number> {
 		public ReduceResult() {
 		}
 
+		/**
+		 * Returns the event indicating when the reduce operation is done
+		 * @return the event, automatically released
+		 */
 		public Event getEvent() {
 			return event;
 		}
 
+		/**
+		 * The buffer storing the single return value.
+		 * @return the buffer with the return value, automatically released
+		 */
 		public Buffer getResult() {
 			return result;
 		}
@@ -312,7 +505,17 @@ public final class CLBlas<T extends Number> {
 		result[1] = numWorkGroups;
 	}
 
-	
+	/**
+	 * Performs a reduce operation.
+	 * @param b the input buffer
+	 * @param preReduceOp an operation applied before the reduce operation is performed
+	 * @param reduceOp the reduce operation
+	 * @param size the count of elements to process
+	 * @param offset the offset into the input buffer
+	 * @param step the step size in the input buffer
+	 * @param result a result structure for reuse, {@code null} if a new one should be created
+	 * @return the result
+	 */
 	public ReduceResult reduce(Buffer b, PreReduceOp preReduceOp, ReduceOp reduceOp,
 			long size, long offset, long step, ReduceResult result) {
 		if (size > Integer.MAX_VALUE) {
@@ -354,15 +557,50 @@ public final class CLBlas<T extends Number> {
 		result.event = tmpMem.copyToAsync(clCommandQueue, result.result, elementSize).register();
 		return result;
 	}
+	/**
+	 * Performs a reduce operation on a part of the buffer.
+	 * Calls {@code reduce(b, preReduceOp, reduceOp, size, 0, 1, result)}.
+	 * @param b the input buffer
+	 * @param preReduceOp an operation applied before the reduce operation is performed
+	 * @param reduceOp the reduce operation
+	 * @param size the count of elements to process
+	 * @param result a result structure for reuse, {@code null} if a new one should be created
+	 * @return the result
+	 */
 	public ReduceResult reduce(Buffer b, PreReduceOp preReduceOp, ReduceOp reduceOp,
 			long size, ReduceResult result) {
 		return reduce(b, preReduceOp, reduceOp, size, 0, 1, result);
 	}
+	/**
+	 * Performs a reduce operation on the whole buffer.
+	 * Calls {@code reduce(b, preReduceOp, reduceOp, b.getSize()/getElementSize(), 0, 1, result)}.
+	 * @param b the input buffer
+	 * @param preReduceOp an operation applied before the reduce operation is performed
+	 * @param reduceOp the reduce operation
+	 * @param result a result structure for reuse, {@code null} if a new one should be created
+	 * @return the result
+	 */
 	public ReduceResult reduce(Buffer b, PreReduceOp preReduceOp, ReduceOp reduceOp,
 			ReduceResult result) {
 		return reduce(b, preReduceOp, reduceOp, b.getSize()/elementSize, result);
 	}
 	
+	/**
+	 * Merges two buffers into one and performs a reduction on the result.
+	 * This is used to realise operations like the dot product, see 
+	 * {@link #dotProduct(com.jme3.opencl.Buffer, com.jme3.opencl.Buffer, org.shaman.jmecl.utils.CLBlas.ReduceResult) }.
+	 * @param a the first input buffer
+	 * @param b the second input buffer
+	 * @param mergeOp the operation to merge the two input buffers
+	 * @param reduceOp the reduce operation
+	 * @param size the count of elements to process
+	 * @param offsetA the offset into the first input buffer
+	 * @param offsetB the offset into the second input buffer
+	 * @param stepA the step size of the first input buffer
+	 * @param stepB the step size of the second input buffer
+	 * @param result a result structure for reuse, {@code null} if a new one should be created
+	 * @return the result
+	 */
 	public ReduceResult reduce2(Buffer a, Buffer b, MergeOp mergeOp, ReduceOp reduceOp,
 			long size, long offsetA, long offsetB, long stepA, long stepB,
 			ReduceResult result) {
@@ -405,20 +643,59 @@ public final class CLBlas<T extends Number> {
 		result.event = tmpMem.copyToAsync(clCommandQueue, result.result, elementSize).register();
 		return result;
 	}
+	/**
+	 * Merges two buffers into one and performs a reduction on the result.
+	 * Calls {@code reduce2(a, b, mergeOp, reduceOp, size, 0, 0, 1, 1, result}.
+	 * @param a the first input buffer
+	 * @param b the second input buffer
+	 * @param mergeOp the operation to merge the two input buffers
+	 * @param reduceOp the reduce operation
+	 * @param size the count of elements to process
+	 * @param result a result structure for reuse, {@code null} if a new one should be created
+	 * @return the result
+	 * @see #reduce2(com.jme3.opencl.Buffer, com.jme3.opencl.Buffer, org.shaman.jmecl.utils.CLBlas.MergeOp, org.shaman.jmecl.utils.CLBlas.ReduceOp, long, long, long, long, long, org.shaman.jmecl.utils.CLBlas.ReduceResult) 
+	 */
 	public ReduceResult reduce2(Buffer a, Buffer b, MergeOp mergeOp,
 			ReduceOp reduceOp, long size, ReduceResult result) {
 		return reduce2(a, b, mergeOp, reduceOp, size, 0, 0, 1, 1, result);
 	}
+	/**
+	 * Merges two buffers into one and performs a reduction on the result.
+	 * @param a the first input buffer
+	 * @param b the second input buffer
+	 * @param mergeOp the operation to merge the two input buffers
+	 * @param reduceOp the reduce operation
+	 * @param result a result structure for reuse, {@code null} if a new one should be created
+	 * @return the result
+	 * @see #reduce2(com.jme3.opencl.Buffer, com.jme3.opencl.Buffer, org.shaman.jmecl.utils.CLBlas.MergeOp, org.shaman.jmecl.utils.CLBlas.ReduceOp, long, long, long, long, long, org.shaman.jmecl.utils.CLBlas.ReduceResult) 
+	 */
 	public ReduceResult reduce2(Buffer a, Buffer b, MergeOp mergeOp,
 			ReduceOp reduceOp,	ReduceResult result) {
 		long size = Math.min(a.getSize(), b.getSize()) / elementSize;
 		return reduce2(a, b, mergeOp, reduceOp, size, result);
 	}
 	
+	/**
+	 * Computes the dot product of the two specified input buffers.
+	 * This is a convenient method and simply calls 
+	 * {@code reduce2(a, b, MergeOp.MUL, ReduceOp.ADD, result)}.
+	 * @param a the first input buffer
+	 * @param b the second input buffer
+	 * @param result a result structure for reuse, {@code null} if a new one should be created
+	 * @return the result
+	 * @see #reduce2(com.jme3.opencl.Buffer, com.jme3.opencl.Buffer, org.shaman.jmecl.utils.CLBlas.MergeOp, org.shaman.jmecl.utils.CLBlas.ReduceOp, org.shaman.jmecl.utils.CLBlas.ReduceResult) 
+	 */
 	public ReduceResult dotProduct(Buffer a, Buffer b, ReduceResult result) {
 		return reduce2(a, b, MergeOp.MUL, ReduceOp.ADD, result);
 	}
 	
+	/**
+	 * Retrieves the result of a reduce operation in a blocking fashion.
+	 * @param result the result structure from one of the reduce operations
+	 * @return the resulting value
+	 * @see #reduce(com.jme3.opencl.Buffer, org.shaman.jmecl.utils.CLBlas.PreReduceOp, org.shaman.jmecl.utils.CLBlas.ReduceOp, long, long, long, org.shaman.jmecl.utils.CLBlas.ReduceResult) 
+	 * @see #reduce2(com.jme3.opencl.Buffer, com.jme3.opencl.Buffer, org.shaman.jmecl.utils.CLBlas.MergeOp, org.shaman.jmecl.utils.CLBlas.ReduceOp, long, long, long, long, long, org.shaman.jmecl.utils.CLBlas.ReduceResult) 
+	 */
 	@SuppressWarnings("unchecked")
 	public T getReduceResultBlocking(ReduceResult result) {
 		ByteBuffer buf = result.result.map(clCommandQueue, MappingAccess.MAP_READ_ONLY);
