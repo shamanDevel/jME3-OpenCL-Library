@@ -19,9 +19,7 @@ import java.util.Scanner;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.lwjgl.LWJGLException;
-import org.lwjgl.opencl.CL;
-import org.lwjgl.opencl.CLContext;
-import org.lwjgl.opencl.CLPlatform;
+import org.lwjgl.opencl.*;
 
 /**
  *
@@ -117,7 +115,7 @@ public class HeadlessContext {
         try {
             CLContext c = CLContext.create(clPlatform.getPlatform(), Collections.singletonList(clDevice.getDevice()), Utils.errorBuffer);
             clContext = new com.jme3.opencl.lwjgl.LwjglContext(c, Collections.singletonList(clDevice));
-        } catch (LWJGLException ex) {
+        } catch (Exception ex) {
             LOG.log(Level.SEVERE, "Unable to create OpenCL context", ex);
             return false;
         }

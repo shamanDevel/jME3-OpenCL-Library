@@ -6,6 +6,9 @@
 package org.shaman.jmecl.utils;
 
 import com.jme3.opencl.*;
+import java.nio.ByteBuffer;
+import java.util.AbstractMap;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -20,25 +23,55 @@ public final class CLBlas<T extends Number> {
 	private static final Logger LOG = Logger.getLogger(CLBlas.class.getName());
 	private static final String FILE = "org/shaman/jmecl/utils/CLBlas.cl";
 	
-	private static final Map<Class<? extends Number>, CLBlas<? extends Number>> instances
+	private static final Map<OpenCLSettings, Map<Class<? extends Number>, CLBlas<? extends Number>>> instances
 			= new HashMap<>();
+	private static interface ElementGetter {
+		Number get(ByteBuffer b);
+	}
 	private static class ElementSpecs {
 		private final int elementSize;
 		private final String clType;
 		private final boolean floatType;
-		private ElementSpecs(int elementSize, String clType, boolean floatType) {
+		private final String clTypeMax;
+		private final String clTypeMin;
+		private final ElementGetter getter;
+		private ElementSpecs(int elementSize, String clType, boolean floatType, 
+				String clTypeMax, String clTypeMin, ElementGetter getter) {
 			this.elementSize = elementSize;
 			this.clType = clType;
 			this.floatType = floatType;
+			this.clTypeMax = clTypeMax;
+			this.clTypeMin = clTypeMin;
+			this.getter = getter;
 		}
 	}
 	private static final Map<Class<? extends Number>, ElementSpecs> specs
 			= new HashMap<>();
 	static {
-		specs.put(Float.class, new ElementSpecs(4, "float", true));
-		specs.put(Double.class, new ElementSpecs(8, "double", true));
-		specs.put(Integer.class, new ElementSpecs(4, "int", false));
-		specs.put(Long.class, new ElementSpecs(8, "long", false));
+		specs.put(Float.class, new ElementSpecs(4, "float", true, "FLT_MAX", "-FLT_MAX", new ElementGetter() {
+			@Override
+			public Number get(ByteBuffer b) {
+				return b.getFloat();
+			}
+		}));
+		specs.put(Double.class, new ElementSpecs(8, "double", true, "DBL_MAX", "-DBL_MAX", new ElementGetter() {
+			@Override
+			public Number get(ByteBuffer b) {
+				return b.getDouble();
+			}
+		}));
+		specs.put(Integer.class, new ElementSpecs(4, "int", false, "INT_MAX", "INT_MIN", new ElementGetter() {
+			@Override
+			public Number get(ByteBuffer b) {
+				return b.getInt();
+			}
+		}));
+		specs.put(Long.class, new ElementSpecs(8, "long", false, "LONG_MAX", "LONG_MIN", new ElementGetter() {
+			@Override
+			public Number get(ByteBuffer b) {
+				return b.getLong();
+			}
+		}));
 	}
 	
 	private final Context clContext;
@@ -46,14 +79,22 @@ public final class CLBlas<T extends Number> {
 	
 	private final Class<T> elementClass;
 	private final int elementSize;
+	private final ElementGetter getter;
 	
+	private final int workgroupSize;
+	private final int workgroups;
 	private final Program program;
 	private final Kernel fillKernel;
 	private final Kernel axpyKernel;
+	private final EnumMap<MapOp, Kernel> mapKernels;
+	private final EnumMap<PreReduceOp, EnumMap<ReduceOp, Kernel>> reduceKernels;
+	private Buffer tmpMem;
 	
 	private CLBlas(OpenCLSettings settings, Class<T> numberType) {
 		clContext = settings.getClContext();
 		clCommandQueue = settings.getClCommandQueue();
+		workgroupSize = (int) Math.min(256, clCommandQueue.getDevice().getMaxiumWorkItemsPerGroup());
+		workgroups = clCommandQueue.getDevice().getComputeUnits(); // *32
 		
 		elementClass = numberType;
 		ElementSpecs es = specs.get(numberType);
@@ -61,31 +102,87 @@ public final class CLBlas<T extends Number> {
 			throw new UnsupportedOperationException("Unsupported number type "+numberType);
 		}
 		elementSize = es.elementSize;
+		getter = es.getter;
 		
 		String cacheID = CLBlas.class.getName() + "-" + numberType.getSimpleName();
 		Program p = settings.getProgramCache().loadFromCache(cacheID);
 		if (p == null) {
 			StringBuilder includes = new StringBuilder();
+			if (elementClass == Double.class) {
+				includes.append("#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n");
+			}
 			includes.append("#define TYPE ").append(es.clType).append("\n");
+			includes.append("#define TYPE_MIN ").append(es.clTypeMin).append("\n");
+			includes.append("#define TYPE_MAX ").append(es.clTypeMax).append("\n");
 			includes.append("#define IS_FLOAT_TYPE ").append(es.floatType ? 1 : 0).append("\n\n");
 			p = clContext.createProgramFromSourceFilesWithInclude(
 					settings.getAssetManager(), includes.toString(), FILE);
 			//settings.getProgramCache().saveToCache(cacheID, p);
 		}
 		program = p;
+		p.register();
 		p.build();
-		fillKernel = p.createKernel("Fill");
-		axpyKernel = p.createKernel("AXPY");
+		fillKernel = p.createKernel("Fill").register();
+		axpyKernel = p.createKernel("AXPY").register();
+		mapKernels = new EnumMap<>(MapOp.class);
+		for (MapOp op : MapOp.values()) {
+			mapKernels.put(op, p.createKernel("Map_" + op.name()).register());
+		}
+		reduceKernels = new EnumMap<>(PreReduceOp.class);
+		for (PreReduceOp op1 : PreReduceOp.values()) {
+			EnumMap<ReduceOp, Kernel> map = new EnumMap<>(ReduceOp.class);
+			for (ReduceOp op2 : ReduceOp.values()) {
+				map.put(op2, p.createKernel("Reduce_"+op1.name()+"_"+op2.name()).register());
+			}
+			reduceKernels.put(op1, map);
+		}
 	}
 	
+	/**
+	 * Returns the blas instance for the specified number type and opencl settings.
+	 * Supported number types: Integer, Long, Float, Double.
+	 * @param <T> the number type
+	 * @param settings the opencl settings: context, command queue, asset manager and program cache
+	 * @param numberType the class of the number type
+	 * @return the blas instance
+	 */
 	public static <T extends Number> CLBlas<T> get(OpenCLSettings settings, Class<T> numberType) {
+		Map<Class<? extends Number>, CLBlas<? extends Number>> map = instances.get(settings);
+		if (map == null) {
+			map = new HashMap<>();
+			instances.put(settings, map);
+		}
 		@SuppressWarnings("unchecked")
-		CLBlas<T> blas = (CLBlas<T>) instances.get(numberType);
+		CLBlas<T> blas = (CLBlas<T>) map.get(numberType);
 		if (blas == null) {
 			blas = new CLBlas<>(settings, numberType);
-			instances.put(numberType, blas);
+			map.put(numberType, blas);
 		}
 		return blas;
+	}
+	
+	private int nextPow2 (int x) 
+	{
+		--x;
+		x |= x >> 1;
+		x |= x >> 2;
+		x |= x >> 4;
+		x |= x >> 8;
+		x |= x >> 16;
+		return ++x;
+	}
+	
+	private Buffer ensureBufferSize(Buffer buffer, long size) {
+		if (buffer == null) {
+			return clContext.createBuffer(size).register();
+		} else {
+			if (buffer.getSize() < size) {
+				buffer.release();
+				return clContext.createBuffer(size).register();
+			} else {
+				return buffer;
+			}
+		}
 	}
 	
 	public Event fill(Buffer b, T val, long size, long offset, long step) {
@@ -147,7 +244,9 @@ public final class CLBlas<T extends Number> {
 	
 	public Event map(Buffer b, MapOp op, T arg, Buffer dest, 
 			long size, long offsetB, long offsetDest, long stepB, long stepDest) {
-		throw new UnsupportedOperationException("not supported yet");
+		Kernel.WorkSize ws = new Kernel.WorkSize(size);
+		Kernel kernel = mapKernels.get(op);
+		return kernel.Run1(clCommandQueue, ws, b, arg, dest, offsetB, offsetDest, stepB, stepDest);
 	}
 	public Event map(Buffer b, MapOp op, T arg, Buffer dest, long size) {
 		return map(b, op, arg, dest, size,  0, 0, 1, 1);
@@ -193,9 +292,58 @@ public final class CLBlas<T extends Number> {
 		
 	}
 	
+	private void getReduceWorkSize (int bufferSize, int[] result) //result: std::size_t* numWorkGroups, std::size_t* workGroupSize
+	{
+		int workGroupSize = (bufferSize < workgroupSize) ? nextPow2 (bufferSize) : workgroupSize;
+		
+		int numWorkGroups = (bufferSize + ((workGroupSize) - 1)) / (workGroupSize);
+		numWorkGroups = Math.min(workgroups, numWorkGroups);
+		
+		result[0] = workGroupSize;
+		result[1] = numWorkGroups;
+	}
+
+	
 	public ReduceResult reduce(Buffer b, PreReduceOp preReduceOp, ReduceOp reduceOp,
 			long size, long offset, long step, ReduceResult result) {
-		throw new UnsupportedOperationException("not supported yet");
+		if (size > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("buffer is too big, only 2^31 elements supported");
+		}
+		
+		if (result == null) {
+			result = new ReduceResult();
+		}
+		result.result = ensureBufferSize(result.result, elementSize);
+		
+		int[] sizes = new int[2];
+		getReduceWorkSize((int) size, sizes);
+		int workGroupSize = sizes[0];
+		int numWorkGroups = sizes[1];
+		int globalWorkSize = numWorkGroups * workGroupSize;
+
+		tmpMem = ensureBufferSize(tmpMem, elementSize * numWorkGroups);
+		
+		Kernel kernelOp1 = reduceKernels.get(preReduceOp).get(reduceOp);
+		Kernel kernelOp2 = reduceKernels.get(PreReduceOp.NONE).get(reduceOp);
+		
+		kernelOp1.Run2NoEvent(clCommandQueue, new Kernel.WorkSize(globalWorkSize), new Kernel.WorkSize(workGroupSize), 
+					b, new Kernel.LocalMem(elementSize), (int) size, tmpMem, (int) offset, (int) step);
+		
+		size = numWorkGroups;
+		while (size > 1) {
+			getReduceWorkSize((int) size, sizes);
+			workGroupSize = sizes[0];
+			numWorkGroups = sizes[1];
+			globalWorkSize = numWorkGroups * workGroupSize;
+			
+			kernelOp2.Run2NoEvent(clCommandQueue, new Kernel.WorkSize(globalWorkSize), new Kernel.WorkSize(workGroupSize), 
+						tmpMem, new Kernel.LocalMem(elementSize), (int) size, tmpMem, (int) 0, (int) 1);
+			
+			size = numWorkGroups;
+		}
+		
+		result.event = tmpMem.copyToAsync(clCommandQueue, result.result, elementSize).register();
+		return result;
 	}
 	public ReduceResult reduce(Buffer b, PreReduceOp preReduceOp, ReduceOp reduceOp,
 			long size, ReduceResult result) {
@@ -222,7 +370,11 @@ public final class CLBlas<T extends Number> {
 		return reduce2(a, b, mergeOp, preReduceOp, reduceOp, size, result);
 	}
 	
+	@SuppressWarnings("unchecked")
 	public T getReduceResultBlocking(ReduceResult result) {
-		throw new UnsupportedOperationException("not supported yet");
+		ByteBuffer buf = result.result.map(clCommandQueue, MappingAccess.MAP_READ_ONLY);
+		Number n = getter.get(buf);
+		result.result.unmap(clCommandQueue, buf);
+		return (T) n;
 	}
 }

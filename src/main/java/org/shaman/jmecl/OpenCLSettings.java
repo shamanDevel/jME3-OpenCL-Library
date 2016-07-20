@@ -9,6 +9,7 @@ import com.jme3.asset.AssetManager;
 import com.jme3.opencl.CommandQueue;
 import com.jme3.opencl.Context;
 import com.jme3.opencl.ProgramCache;
+import java.util.Objects;
 
 /**
  *
@@ -43,6 +44,32 @@ public class OpenCLSettings {
 
 	public AssetManager getAssetManager() {
 		return assetManager;
+	}
+
+	@Override
+	public int hashCode() {
+		int hash = 3;
+		hash = 43 * hash + Objects.hashCode(this.clContext);
+		hash = 43 * hash + Objects.hashCode(this.clCommandQueue);
+		return hash;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (obj == null) {
+			return false;
+		}
+		if (getClass() != obj.getClass()) {
+			return false;
+		}
+		final OpenCLSettings other = (OpenCLSettings) obj;
+		if (!Objects.equals(this.clContext, other.clContext)) {
+			return false;
+		}
+		if (!Objects.equals(this.clCommandQueue, other.clCommandQueue)) {
+			return false;
+		}
+		return true;
 	}
 
 }
