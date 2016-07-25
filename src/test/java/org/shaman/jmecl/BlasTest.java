@@ -19,73 +19,15 @@ import org.junit.Test;
 import org.shaman.jmecl.utils.CLBlas;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 
 /**
  *
  * @author Sebastian Weiss
  */
-public class BlasTest {
+public class BlasTest extends AbstractOpenCLTest {
 	private static final Logger LOG = Logger.getLogger(BlasTest.class.getName());
 	
-	private static Random RAND;
-	private Platform clPlatform;
-	private Device clDevice;
-	private Context clContext;
-	private CommandQueue clCommandQueue;
-	private AssetManager assetManager;
-	private OpenCLSettings settings;
-	
 	public BlasTest() {
-	}
-	
-	private void assertBufferEquals(Buffer buf, int offset, int... values) {
-		ByteBuffer b = buf.map(clCommandQueue, MappingAccess.MAP_READ_ONLY);
-		for (int i=0; i<offset; ++i) {
-			b.getInt();
-		}
-		for (int v : values) {
-			assertEquals(v, b.getInt());
-		}
-		buf.unmap(clCommandQueue, b);
-	}
-	private void assertBufferEquals(Buffer buf, int offset, long... values) {
-		ByteBuffer b = buf.map(clCommandQueue, MappingAccess.MAP_READ_ONLY);
-		for (int i=0; i<offset; ++i) {
-			b.getLong();
-		}
-		for (long v : values) {
-			assertEquals(v, b.getLong());
-		}
-		buf.unmap(clCommandQueue, b);
-	}
-	private void assertBufferEquals(Buffer buf, int offset, float... values) {
-		ByteBuffer b = buf.map(clCommandQueue, MappingAccess.MAP_READ_ONLY);
-		for (int i=0; i<offset; ++i) {
-			b.getFloat();
-		}
-		for (float v : values) {
-			assertEquals(v, b.getFloat(), 0.00001);
-		}
-		buf.unmap(clCommandQueue, b);
-	}
-	private void assertBufferEquals(Buffer buf, int offset, double... values) {
-		ByteBuffer b = buf.map(clCommandQueue, MappingAccess.MAP_READ_ONLY);
-		for (int i=0; i<offset; ++i) {
-			b.getDouble();
-		}
-		for (int i=0; i<values.length; ++i) {
-			double v = values[i];
-			assertEquals("Index " + i, v, b.getDouble(), 0.00001);
-		}
-		buf.unmap(clCommandQueue, b);
-	}
-	
-	private int randInt(int min, int max) {
-		return RAND.nextInt(max-min) + min;
-	}
-	private double randDouble(double min, double max) {
-		return RAND.nextDouble()*(max-min) + min;
 	}
 	
 	@Test
@@ -268,30 +210,4 @@ public class BlasTest {
 		b = CLBlas.get(settings, Long.class);
 	}
 	
-	@Before
-	public void setUp() {
-		HeadlessContext hc = new HeadlessContext();
-		assertTrue(hc.createOpenCLContext(false));
-		clPlatform = hc.getClPlatform();
-		clDevice = hc.getClDevice();
-		clContext = hc.getClContext();
-		clCommandQueue = clContext.createQueue(clDevice);
-		assetManager = new DesktopAssetManager(true);
-		settings = new OpenCLSettings(clContext, clCommandQueue, null, assetManager);
-		LOG.info("OpenCL initialized");
-	}
-	
-	@After
-	public void tearDown() {
-		OpenCLObjectManager.getInstance().deleteAllObjects();
-		clCommandQueue.release();
-		clContext.release();
-		LOG.info("OpenCL released");
-	}
-	
-	
-	@BeforeClass
-	public static void initRandom() {
-		RAND = new Random();
-	}
 }
