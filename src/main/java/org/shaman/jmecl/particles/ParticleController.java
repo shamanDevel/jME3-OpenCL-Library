@@ -11,6 +11,7 @@ import com.jme3.renderer.RenderManager;
 import com.jme3.renderer.ViewPort;
 import com.jme3.scene.VertexBuffer;
 import com.jme3.scene.control.AbstractControl;
+import com.jme3.util.BufferUtils;
 import java.util.EnumMap;
 import java.util.Map;
 import org.shaman.jmecl.OpenCLSettings;
@@ -19,7 +20,14 @@ import org.shaman.jmecl.sorting.RadixSort;
 import org.shaman.jmecl.utils.SharedBuffer;
 
 /**
- *
+ * Particle controller,
+ * the buffers are accessed by their {@link VertexBuffer.Type}.
+ * Default mapping (expected by the default strategies):
+ * <ul>
+ *  <li>Position -> float4 (pos.x, pos.y, pos.z, time)</li>
+ *  <li>TexCoord -> unused</li>
+ *  <li>TexCoord2 -> float4 (vel.x, vel.y, vel.z, density)</li>
+ * </ul>
  * @author Sebastian Weiss
  */
 public class ParticleController extends AbstractControl {
@@ -38,6 +46,24 @@ public class ParticleController extends AbstractControl {
 	public ParticleController(ParticleRenderer renderer) {
 		this.renderer = renderer;
 		buffers = new EnumMap<>(VertexBuffer.Type.class);
+	}
+	
+	/**
+	 * Initializes the default buffers as expected by the default strategies.
+	 * See the class description for the buffers.
+	 * Calls {@link #addBuffer(com.jme3.scene.VertexBuffer) } multiple times
+	 * @param initialCapacity the initial capacity
+	 */
+	public void initDefaultBuffers(int initialCapacity) {
+		VertexBuffer vb;
+		
+		vb = new VertexBuffer(VertexBuffer.Type.Position);
+		vb.setupData(VertexBuffer.Usage.Dynamic, 4, VertexBuffer.Format.Float, BufferUtils.createFloatBuffer(initialCapacity * 4));
+		addBuffer(vb);
+		
+		vb = new VertexBuffer(VertexBuffer.Type.TexCoord2);
+		vb.setupData(VertexBuffer.Usage.Dynamic, 4, VertexBuffer.Format.Float, BufferUtils.createFloatBuffer(initialCapacity * 4));
+		addBuffer(vb);
 	}
 
 	public void addBuffer(VertexBuffer buffer) {
@@ -80,6 +106,11 @@ public class ParticleController extends AbstractControl {
 		radixSort = new RadixSort(clSettings);
 		
 	}
+
+	public OpenCLSettings getCLSettings() {
+		return clSettings;
+	}
+	
 	
 	public SharedBuffer getBuffer(VertexBuffer.Type type) {
 		return buffers.get(type);
