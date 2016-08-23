@@ -6,6 +6,7 @@
 package org.shaman.jmecl.utils;
 
 import com.jme3.opencl.Buffer;
+import com.jme3.opencl.CommandQueue;
 import com.jme3.opencl.Context;
 import com.jme3.opencl.MemoryAccess;
 import com.jme3.renderer.RenderManager;
@@ -62,6 +63,25 @@ public class SharedBuffer {
 		return clBuffer != null;
 	}
 	
+	private java.nio.Buffer createBuffer(int size) {
+		switch (format) {
+			case Byte:
+			case UnsignedByte:
+				return BufferUtils.createByteBuffer(size);
+			case Double: return BufferUtils.createDoubleBuffer(size);
+			case Float: return BufferUtils.createFloatBuffer(size);
+			case Half:
+			case Short:
+			case UnsignedShort:
+				return BufferUtils.createShortBuffer(size);
+			case Int:
+			case UnsignedInt:
+				return BufferUtils.createIntBuffer(size);
+			default:
+				throw new IllegalArgumentException("unknown format "+format);
+		}
+	}
+	
 	/**
 	 * Initializes the shared buffer.
 	 * The buffer is created (not with the constructor taking the vertex buffer as argument),
@@ -89,7 +109,7 @@ public class SharedBuffer {
 		//create buffer
 		if (jmeBuffer == null) {
 			jmeBuffer = new VertexBuffer(type);
-			ByteBuffer data = BufferUtils.createByteBuffer(size * components * format.getComponentSize());
+			java.nio.Buffer data = createBuffer(size * components);
 			jmeBuffer.setupData(VertexBuffer.Usage.Dynamic, components, format, data);
 		}
 		
@@ -115,28 +135,26 @@ public class SharedBuffer {
 	 * Resizes this buffer (shrink and grow).
 	 * Must be called from the jME main thread.
 	 * 
-	 * The buffer entries that are appended are uninitialized, the old ones are copied.
+	 * The buffer entries that are appended are uninitialized, the old ones are copied,
+	 * but only if a command queue is passed. If no command queue is passed
+	 * (parameter is set to {@code null}, nothing is passed)
 	 * 
 	 * @param newSize the new size
+	 * @param queue the command queue. Must be not null of the old data should be
+	 * copied
 	 */
-	public void resize(int newSize) {
+	public void resize(int newSize, CommandQueue queue) {
 		if (size == newSize) {
 			return;
 		}
+		size = newSize;
 		
-		//delete old buffer
-		clBuffer.release();
-		
-		//create new data buffer and copy values
-		ByteBuffer newData = BufferUtils.createByteBuffer(size * components * format.getComponentSize());
-		ByteBuffer oldData = (ByteBuffer) jmeBuffer.getData();
-		oldData.rewind();
-		oldData.limit(Math.min(oldData.limit(), newData.remaining()));
-		newData.put(oldData);
-		newData.rewind();
+		Buffer oldCLBuffer = clBuffer;
 		
 		//create new vertex buffer
 		jmeBuffer = new VertexBuffer(type);
+		int bufferSize = size * components;
+		java.nio.Buffer newData = createBuffer(bufferSize);
 		jmeBuffer.setupData(VertexBuffer.Usage.Dynamic, components, format, newData);
 		
 		//upload to gpu
@@ -144,5 +162,13 @@ public class SharedBuffer {
 		
 		//create shared bufer
 		clBuffer = clContext.bindVertexBuffer(jmeBuffer, ma).register();
+		
+		//copy old to new
+		if (queue != null) {
+			oldCLBuffer.copyToAsync(queue, clBuffer, Math.min(oldCLBuffer.getSize(), bufferSize * format.getComponentSize()));
+		}
+		
+		//delete old
+		oldCLBuffer.release();
 	}
 }
