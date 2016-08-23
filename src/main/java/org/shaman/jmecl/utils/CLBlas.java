@@ -103,6 +103,8 @@ public final class CLBlas<T extends Number> {
 	private final EnumMap<MapOp, Kernel> mapKernels;
 	private final EnumMap<PreReduceOp, EnumMap<ReduceOp, Kernel>> reduceKernels;
 	private final EnumMap<MergeOp, EnumMap<ReduceOp, Kernel>> reduce2Kernels;
+	private final Map<Integer, Kernel> reorderKernels;
+	private final Kernel fillIndicesKernel;
 	private Buffer tmpMem;
 	
 	private CLBlas(OpenCLSettings settings, Class<T> numberType) {
@@ -121,12 +123,18 @@ public final class CLBlas<T extends Number> {
 		
 		String cacheID = CLBlas.class.getName() + "-" + numberType.getSimpleName();
 		Program p = settings.getProgramCache().loadFromCache(cacheID);
+		int reorderComponents[] = {1, 2, 3, 4};
 		if (p == null) {
 			StringBuilder includes = new StringBuilder();
 			if (elementClass == Double.class) {
 				includes.append("#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n");
 			}
 			includes.append("#define TYPE ").append(es.clType).append("\n");
+			for (int c : reorderComponents) {
+				if (c>1) {
+					includes.append("#define TYPE").append(c).append(" ").append(es.clType).append(c).append("\n");
+				}
+			}
 			includes.append("#define TYPE_MIN ").append(es.clTypeMin).append("\n");
 			includes.append("#define TYPE_MAX ").append(es.clTypeMax).append("\n");
 			includes.append("#define IS_FLOAT_TYPE ").append(es.floatType ? 1 : 0).append("\n\n");
@@ -159,6 +167,11 @@ public final class CLBlas<T extends Number> {
 			}
 			reduce2Kernels.put(op1, map);
 		}
+		reorderKernels = new HashMap<>();
+		for (int c : reorderComponents) {
+			reorderKernels.put(c, p.createKernel("Reorder_"+c).register());
+		}
+		fillIndicesKernel = p.createKernel("FillIndices").register();
 	}
 	
 	/**
@@ -259,6 +272,51 @@ public final class CLBlas<T extends Number> {
 	 */
 	public Event fill(Buffer b, T val) {
 		return fill(b, val, b.getSize()/elementSize);
+	}
+	
+	/**
+	 * Fills a part of the buffer with an increasing sequence.
+	 * It assigns each element a value with the following equation:
+	 * {@code x[idx] = start + idx * step}.
+	 * @param x the destination buffer
+	 * @param start the start value
+	 * @param step the step value
+	 * @param size the number of elements to process
+	 * @return the event object
+	 */
+	public Event fillIndices(Buffer x, T start, T step, long size) {
+		return fillIndicesKernel.Run1(clCommandQueue, new Kernel.WorkSize(size), x, start, step);
+	}
+	
+	/**
+	 * Fills the whole buffer with an increasing sequence.
+	 * It assigns each element a value with the following equation:
+	 * {@code x[idx] = start + idx * step}.
+	 * @param x the destination buffer
+	 * @param start the start value
+	 * @param step the step value
+	 * @return the event object
+	 * @see #fillIndices(com.jme3.opencl.Buffer, java.lang.Number, java.lang.Number, long) 
+	 */
+	public Event fillIndices(Buffer x, T start, T step) {
+		return fillIndices(x, start, step, x.getSize()/elementSize);
+	}
+	
+	/**
+	 * Reorders the buffers with the specified index buffers.
+	 * This is used to reorder other buffers after only an index buffer has
+	 * been sorted.
+	 * @param indices the index buffer, type uint
+	 * @param src the source buffer
+	 * @param dest the destination buffer
+	 * @param components the number of components per entry (like float, float2, float4)
+	 * @param size the count of elements
+	 * @return the event, must be released manually
+	 */
+	public Event reorder(Buffer indices, Buffer src, Buffer dest, int components, long size) {
+		Kernel.WorkSize ws = new Kernel.WorkSize(size);
+		Kernel k = reorderKernels.get(components);
+		return k.Run1(clCommandQueue, ws, indices, src, dest);
 	}
 	
 	/**

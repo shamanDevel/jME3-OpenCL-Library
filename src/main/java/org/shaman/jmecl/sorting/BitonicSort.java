@@ -88,6 +88,11 @@ public class BitonicSort implements Sorter {
 	@Override
 	public void sort(Buffer keys, Buffer values) {
 		int n = (int) (keys.getSize() / settings.keySize);
+		sort(keys, values, n);
+	}
+
+	@Override
+	public void sort(Buffer keys, Buffer values, int n) {
 		int k = Math.round(FastMath.log(n, 2));
 		if (1<<k != n) {
 			//it must be a power of two

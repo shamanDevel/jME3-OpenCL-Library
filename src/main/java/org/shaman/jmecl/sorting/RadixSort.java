@@ -111,8 +111,12 @@ public class RadixSort implements Sorter {
 	@Override
 	public void sort(Buffer keys, Buffer values) {
 		int n = (int) (keys.getSize() / 4);
-		
-		radixsort(keys, values, 0, endBit, n);
+		sort(keys, values, n);
+	}
+
+	@Override
+	public void sort(Buffer keys, Buffer values, int count) {
+		radixsort(keys, values, 0, endBit, count);
 	}
 	
 	private void radixsort(Buffer bfKey, Buffer bfVal, int iStartBit, int iEndBit, long elements)

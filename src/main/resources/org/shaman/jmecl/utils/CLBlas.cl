@@ -13,6 +13,25 @@ __kernel void Fill(__global TYPE* b, TYPE val, SIZE_T offset, SIZE_T step)
 	b[offset + step*id] = val;
 }
 
+#define CONCAT(a, b) a##b
+
+#define REORDER_TEMPLATE(type, name) \
+	__kernel void Reorder_##name (__global uint* indices, __global type *src, __global type *dst) \
+	{ \
+		const int idx = get_global_id(0); \
+		dst[idx] = src[indices[idx]]; \
+	}
+REORDER_TEMPLATE(TYPE, 1)
+REORDER_TEMPLATE(CONCAT(TYPE,2), 2)
+REORDER_TEMPLATE(CONCAT(TYPE,3), 3)
+REORDER_TEMPLATE(CONCAT(TYPE,4), 4)
+
+__kernel void FillIndices(__global TYPE* x, TYPE start, TYPE step)
+{
+	unsigned int id = get_global_id(0);
+	x[id] = start + id * step;
+}
+
 __kernel void AXPY(TYPE a, __global TYPE* x, __global TYPE* y, __global TYPE* dest,
 		SIZE_T offsetX, SIZE_T offsetY, SIZE_T offsetDest,
 		SIZE_T stepX, SIZE_T stepY, SIZE_T stepDest)

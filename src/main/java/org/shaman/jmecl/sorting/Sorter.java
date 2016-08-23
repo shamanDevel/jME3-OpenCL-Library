@@ -36,6 +36,15 @@ public interface Sorter {
 	void sort(Buffer keys, Buffer values);
 	
 	/**
+	 * Sorts the given array of (key, value) pairs, restricted to the specified element count.
+	 * The sorting happens in-place
+	 * @param keys the key buffer
+	 * @param values the value buffer
+	 * @param count the first {@code count} elements are processed
+	 */
+	void sort(Buffer keys, Buffer values, int count);
+	
+	/**
 	 * Specifies settings of the used datatypes.
 	 * Instances of this class are passed to the constructor of the sorting 
 	 * algorithms that support them.
