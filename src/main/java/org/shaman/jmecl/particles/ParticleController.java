@@ -5,15 +5,19 @@
  */
 package org.shaman.jmecl.particles;
 
+import com.jme3.app.SimpleApplication;
 import com.jme3.opencl.Buffer;
 import com.jme3.opencl.MemoryAccess;
 import com.jme3.renderer.RenderManager;
 import com.jme3.renderer.ViewPort;
+import com.jme3.renderer.opengl.GLRenderer;
 import com.jme3.scene.VertexBuffer;
 import com.jme3.scene.control.AbstractControl;
 import com.jme3.util.BufferUtils;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.shaman.jmecl.OpenCLSettings;
 import org.shaman.jmecl.rendering.ParticleRenderer;
 import org.shaman.jmecl.sorting.RadixSort;
@@ -31,6 +35,7 @@ import org.shaman.jmecl.utils.SharedBuffer;
  * @author Sebastian Weiss
  */
 public class ParticleController extends AbstractControl {
+	private static final Logger LOG = Logger.getLogger(ParticleController.class.getName());
 	private final ParticleRenderer renderer;
 	
 	private OpenCLSettings clSettings;
@@ -68,6 +73,8 @@ public class ParticleController extends AbstractControl {
 
 	public void addBuffer(VertexBuffer buffer) {
 		buffers.put(buffer.getBufferType(), new SharedBuffer(buffer));
+		renderer.getMesh().setBuffer(buffer);
+		LOG.log(Level.INFO, "buffer {0} added to particle controller", buffer);
 	}
 
 	public SeedingStrategy getSeedingStrategy() {
@@ -104,7 +111,7 @@ public class ParticleController extends AbstractControl {
 		advectionStrategy.resized(capacity);
 		
 		radixSort = new RadixSort(clSettings);
-		
+		LOG.info("particle controller initialized");
 	}
 
 	public OpenCLSettings getCLSettings() {
@@ -128,6 +135,8 @@ public class ParticleController extends AbstractControl {
 			int newSize = Math.max(requiredCount, oldCapacity * 2);
 			for (SharedBuffer b : buffers.values()) {
 				b.resize(newSize, clSettings.getClCommandQueue());
+				renderer.getMesh().clearBuffer(b.getJMEBuffer().getBufferType());
+				renderer.getMesh().setBuffer(b.getJMEBuffer());
 			}
 			seedingStrategy.resized(newSize);
 			advectionStrategy.resized(newSize);
@@ -135,6 +144,7 @@ public class ParticleController extends AbstractControl {
 			indexBuffer.release();
 			deletionBuffer = clSettings.getClContext().createBuffer(newSize * 4, MemoryAccess.READ_WRITE).register();
 			indexBuffer = clSettings.getClContext().createBuffer(newSize * 4, MemoryAccess.READ_WRITE).register();
+			return;
 		}
 		renderer.setParticleCount(requiredCount);
 		seedingStrategy.initNewParticles(f, oldCount, toCreate);

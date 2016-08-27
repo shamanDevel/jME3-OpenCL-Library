@@ -14,6 +14,9 @@ import com.jme3.renderer.opengl.GLRenderer;
 import com.jme3.scene.VertexBuffer;
 import com.jme3.util.BufferUtils;
 import java.nio.ByteBuffer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.lwjgl.opengl.GL11;
 
 /**
  * Represents a vertex buffer that can be access by both jME rendering system
@@ -21,6 +24,8 @@ import java.nio.ByteBuffer;
  * @author Sebastian Weiss
  */
 public class SharedBuffer {
+	private static final Logger LOG = Logger.getLogger(SharedBuffer.class.getName());
+	
 	private VertexBuffer jmeBuffer;
 	private Buffer clBuffer;
 	private GLRenderer renderer;
@@ -111,13 +116,16 @@ public class SharedBuffer {
 			jmeBuffer = new VertexBuffer(type);
 			java.nio.Buffer data = createBuffer(size * components);
 			jmeBuffer.setupData(VertexBuffer.Usage.Dynamic, components, format, data);
+			LOG.info("vertex buffer created");
 		}
 		
 		//upload to gpu
 		renderer.updateBufferData(jmeBuffer);
+		LOG.log(Level.INFO, "uploaded to the GPU: {0}", jmeBuffer.getId());
 		
 		//create shared bufer
 		clBuffer = clContext.bindVertexBuffer(jmeBuffer, memoryAccess).register();
+		LOG.log(Level.FINE, "OpenCL buffer created from vertex buffer: {0}", clBuffer);
 		
 		this.clContext = clContext;
 		this.ma = memoryAccess;
@@ -147,6 +155,7 @@ public class SharedBuffer {
 		if (size == newSize) {
 			return;
 		}
+		LOG.log(Level.INFO, "resizing shared buffer from {0} to {1}", new Object[]{size, newSize});
 		size = newSize;
 		
 		Buffer oldCLBuffer = clBuffer;
@@ -155,6 +164,7 @@ public class SharedBuffer {
 		jmeBuffer = new VertexBuffer(type);
 		int bufferSize = size * components;
 		java.nio.Buffer newData = createBuffer(bufferSize);
+		
 		jmeBuffer.setupData(VertexBuffer.Usage.Dynamic, components, format, newData);
 		
 		//upload to gpu
@@ -165,7 +175,11 @@ public class SharedBuffer {
 		
 		//copy old to new
 		if (queue != null) {
-			oldCLBuffer.copyToAsync(queue, clBuffer, Math.min(oldCLBuffer.getSize(), bufferSize * format.getComponentSize()));
+			//queue.finish();
+			//GL11.glFinish();
+			queue.finish();
+			oldCLBuffer.copyTo(queue, clBuffer, Math.min(oldCLBuffer.getSize(), clBuffer.getSize())); //Why do I get an CL_OUT_OF_RESOURCES here ?!?
+			queue.finish();
 		}
 		
 		//delete old

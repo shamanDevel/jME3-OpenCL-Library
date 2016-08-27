@@ -17,10 +17,30 @@ public class ParticleRenderer extends Geometry {
 	
 	private boolean worldSpace;
 	
+	private static class CustomMesh extends Mesh {
+
+		private int pointCount;
+		
+		private CustomMesh() {
+			setMode(Mode.Points);
+		}
+
+		@Override
+		public void updateCounts() {
+			VertexBuffer vp = getBuffer(VertexBuffer.Type.Position);
+			if (vp == null) {
+				super.updateCounts();
+				return;
+			}
+			int limit = vp.getData().limit();
+			vp.getData().limit(pointCount * vp.getNumComponents());
+			super.updateCounts();
+			vp.getData().limit(limit);
+		}
+	}
+	
 	private static Mesh setupMesh() {
-		Mesh mesh = new Mesh();
-		mesh.setMode(Mesh.Mode.Points);
-		return mesh;
+		return new CustomMesh();
 	}
 
 	public ParticleRenderer(String name) {
@@ -32,8 +52,9 @@ public class ParticleRenderer extends Geometry {
 	}
 	
 	public void setParticleCount(int count) {
-		VertexBuffer vb = mesh.getBuffer(VertexBuffer.Type.Position);
-		vb.getData().limit(count * vb.getNumComponents());
+//		VertexBuffer vb = mesh.getBuffer(VertexBuffer.Type.Position);
+//		vb.getData().limit(count * vb.getNumComponents());
+		((CustomMesh) mesh).pointCount = count;
 		mesh.updateCounts();
 	}
 	

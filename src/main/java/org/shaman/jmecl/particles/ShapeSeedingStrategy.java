@@ -12,6 +12,7 @@ import com.jme3.opencl.Kernel;
 import com.jme3.opencl.Program;
 import com.jme3.scene.VertexBuffer;
 import com.jme3.util.BufferUtils;
+import com.jme3.util.TempVars;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -151,7 +152,8 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 
 	@Override
 	public int getNewParticlesCount(float tpf) {
-		return (int) Math.ceil(tpf * particlesPerSecond);
+		//return (int) Math.ceil(tpf * particlesPerSecond);
+		return 1;
 	}
 
 	@Override
@@ -162,6 +164,15 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 		Buffer positionBuffer = controller.getBuffer(VertexBuffer.Type.Position).getCLBuffer();
 		Buffer velocityBuffer = controller.getBuffer(VertexBuffer.Type.TexCoord2).getCLBuffer();
 		
+		TempVars vars = TempVars.get();
+		try {
+			
+		kernels.clQueue.finish();
+		positionBuffer.acquireBufferForSharingNoEvent(kernels.clQueue);
+		kernels.clQueue.finish();
+		velocityBuffer.acquireBufferForSharingNoEvent(kernels.clQueue);
+		kernels.clQueue.finish();
+		
 		//seed particles
 		int offset2 = offset;
 		int left = actualCount;
@@ -169,14 +180,26 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 			int s = Math.min(left, kernels.seedCount);
 			ws.set(1, s, 1, 1);
 			if (shape instanceof Point) {
+				vars.vect4f1.setX(((Point) shape).position.x);
+				vars.vect4f1.setY(((Point) shape).position.y);
+				vars.vect4f1.setZ(((Point) shape).position.z);
 				kernels.SeedPointKernel.Run1NoEvent(kernels.clQueue, ws, offset2, positionBuffer, 
-						((Point) shape).position, tpf, kernels.seeds);
+						vars.vect4f1, tpf, kernels.seeds);
 			} else if (shape instanceof Sphere) {
+				vars.vect4f1.setX(((Sphere) shape).center.x);
+				vars.vect4f1.setY(((Sphere) shape).center.y);
+				vars.vect4f1.setZ(((Sphere) shape).center.z);
 				kernels.SeedSphereKernel.Run1NoEvent(kernels.clQueue, ws, offset2, positionBuffer, 
-						((Sphere) shape).center, ((Sphere) shape).radius, tpf, kernels.seeds);
+						vars.vect4f1, ((Sphere) shape).radius, tpf, kernels.seeds);
 			} else if (shape instanceof Box) {
+				vars.vect4f1.setX(((Box) shape).min.x);
+				vars.vect4f1.setY(((Box) shape).min.y);
+				vars.vect4f1.setZ(((Box) shape).min.z);
+				vars.vect4f2.setX(((Box) shape).max.x);
+				vars.vect4f2.setY(((Box) shape).max.y);
+				vars.vect4f2.setZ(((Box) shape).max.z);
 				kernels.SeedBoxKernel.Run1NoEvent(kernels.clQueue, ws, offset2, positionBuffer, 
-						((Box) shape).min, ((Box) shape).max, tpf, kernels.seeds);
+						vars.vect4f1, vars.vect4f2, tpf, kernels.seeds);
 			}
 			left -= s;
 			offset2 += s;
@@ -184,8 +207,19 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 		
 		//init particles
 		ws.set(1, actualCount, 1, 1);
+		vars.vect4f1.setX(initialVelocity.x);
+		vars.vect4f1.setY(initialVelocity.y);
+		vars.vect4f1.setZ(initialVelocity.z);
 		kernels.InitParticlesKernel.Run1NoEvent(kernels.clQueue, ws, offset, velocityBuffer,
-				initialVelocity, velocityVariation, initialDensity, densityVariation, kernels.seeds);
+				vars.vect4f1, velocityVariation, initialDensity, densityVariation, kernels.seeds);
+		
+		positionBuffer.releaseBufferForSharingNoEvent(kernels.clQueue);
+		velocityBuffer.releaseBufferForSharingNoEvent(kernels.clQueue);
+		kernels.clQueue.finish();
+		
+		} finally {
+			vars.release();
+		}
 		
 		return actualCount;
 	}
