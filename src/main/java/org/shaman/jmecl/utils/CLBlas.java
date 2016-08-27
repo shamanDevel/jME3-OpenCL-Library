@@ -597,7 +597,8 @@ public final class CLBlas<T extends Number> {
 		Kernel kernelOp2 = reduceKernels.get(PreReduceOp.NONE).get(reduceOp);
 		
 		kernelOp1.Run2NoEvent(clCommandQueue, new Kernel.WorkSize(globalWorkSize), new Kernel.WorkSize(workGroupSize), 
-					b, new Kernel.LocalMem(elementSize), (int) size, tmpMem, (int) offset, (int) step);
+					b, new Kernel.LocalMemPerElement(elementSize), (int) size, tmpMem, (int) offset, (int) step);
+                clCommandQueue.finish();
 		
 		size = numWorkGroups;
 		while (size > 1) {
@@ -607,12 +608,14 @@ public final class CLBlas<T extends Number> {
 			globalWorkSize = numWorkGroups * workGroupSize;
 			
 			kernelOp2.Run2NoEvent(clCommandQueue, new Kernel.WorkSize(globalWorkSize), new Kernel.WorkSize(workGroupSize), 
-						tmpMem, new Kernel.LocalMem(elementSize), (int) size, tmpMem, (int) 0, (int) 1);
+						tmpMem, new Kernel.LocalMemPerElement(elementSize), (int) size, tmpMem, (int) 0, (int) 1);
+                        clCommandQueue.finish();
 			
 			size = numWorkGroups;
 		}
 		
 		result.event = tmpMem.copyToAsync(clCommandQueue, result.result, elementSize).register();
+                clCommandQueue.finish();
 		return result;
 	}
 	/**
@@ -683,7 +686,8 @@ public final class CLBlas<T extends Number> {
 		Kernel kernelOp2 = reduceKernels.get(PreReduceOp.NONE).get(reduceOp);
 		
 		kernelOp1.Run2NoEvent(clCommandQueue, new Kernel.WorkSize(globalWorkSize), new Kernel.WorkSize(workGroupSize), 
-					a, b, new Kernel.LocalMem(elementSize), (int) size, tmpMem, (int) offsetA, (int) stepA, (int) offsetB, (int) stepB);
+					a, b, new Kernel.LocalMemPerElement(elementSize), (int) size, tmpMem, (int) offsetA, (int) stepA, (int) offsetB, (int) stepB);
+                clCommandQueue.finish();
 		
 		size = numWorkGroups;
 		while (size > 1) {
@@ -693,12 +697,14 @@ public final class CLBlas<T extends Number> {
 			globalWorkSize = numWorkGroups * workGroupSize;
 			
 			kernelOp2.Run2NoEvent(clCommandQueue, new Kernel.WorkSize(globalWorkSize), new Kernel.WorkSize(workGroupSize), 
-						tmpMem, new Kernel.LocalMem(elementSize), (int) size, tmpMem, (int) 0, (int) 1);
+						tmpMem, new Kernel.LocalMemPerElement(elementSize), (int) size, tmpMem, (int) 0, (int) 1);
+                        clCommandQueue.finish();
 			
 			size = numWorkGroups;
 		}
 		
 		result.event = tmpMem.copyToAsync(clCommandQueue, result.result, elementSize).register();
+                clCommandQueue.finish();
 		return result;
 	}
 	/**
