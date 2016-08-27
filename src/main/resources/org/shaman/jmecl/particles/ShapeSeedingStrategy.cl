@@ -40,6 +40,6 @@ __kernel void InitParticles(int offset, __global float4* velocities,
 	float2 gauss1 = randGaussianf(seeds + idx);
 	float2 gauss2 = randGaussianf(seeds + idx);
 	float3 vel = initialVelocity.xyz + velocityVariation * (float3)(gauss1, gauss2.x);
-	float density = fmax(0, initialDensity + densityVariation * gauss2.y);
+	float density = fmax((float) 0, initialDensity + densityVariation * gauss2.y);
 	velocities[idx + offset] = (float4)(vel, density);
 }

@@ -59,18 +59,30 @@ public class UserPlatformChooser implements PlatformChooser{
         System.out.println(platformInfos);
         
         //choose devices
-		System.out.println("Select platform: "); System.out.flush();
-		int platformID;
-		do {
-			platformID = in.nextInt()-1;
-		} while (platformID<0 || platformID>=platforms.size());
-		Platform platform = platforms.get(platformID);
-		int deviceID;
-		System.out.println("Select device: "); System.out.flush();
-		do {
-			deviceID = in.nextInt()-1;
-		} while (deviceID<0 || deviceID>=platform.getDevices().size());
-		Device device = platform.getDevices().get(deviceID);
+		Platform platform;
+		if (platforms.size() == 1) {
+			platform = platforms.get(0);
+			System.out.println("Selected platform 1");
+		} else {
+			System.out.println("Select platform: "); System.out.flush();
+			int platformID;
+			do {
+				platformID = in.nextInt()-1;
+			} while (platformID<0 || platformID>=platforms.size());
+			platform = platforms.get(platformID);
+		}
+		Device device;
+		if (platform.getDevices().size() == 1) {
+			device = platform.getDevices().get(0);
+			System.out.println("Selected device 1");
+		} else {
+			int deviceID;
+			System.out.println("Select device: "); System.out.flush();
+			do {
+				deviceID = in.nextInt()-1;
+			} while (deviceID<0 || deviceID>=platform.getDevices().size());
+			device = platform.getDevices().get(deviceID);
+		}
 		return Collections.singletonList(device);
 	}
 	

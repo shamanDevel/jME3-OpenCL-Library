@@ -175,11 +175,11 @@ public class SharedBuffer {
 		
 		//copy old to new
 		if (queue != null) {
-			//queue.finish();
-			//GL11.glFinish();
-			queue.finish();
+			clBuffer.acquireBufferForSharingNoEvent(queue);
+			oldCLBuffer.acquireBufferForSharingNoEvent(queue);
 			oldCLBuffer.copyTo(queue, clBuffer, Math.min(oldCLBuffer.getSize(), clBuffer.getSize())); //Why do I get an CL_OUT_OF_RESOURCES here ?!?
-			queue.finish();
+			clBuffer.releaseBufferForSharingNoEvent(queue);
+			oldCLBuffer.releaseBufferForSharingNoEvent(queue);
 		}
 		
 		//delete old
