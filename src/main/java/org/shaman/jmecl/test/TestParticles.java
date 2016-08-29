@@ -17,7 +17,7 @@ import org.shaman.jmecl.OpenCLSettings;
 import org.shaman.jmecl.particles.DefaultAdvectionStrategy;
 import org.shaman.jmecl.particles.ParticleController;
 import org.shaman.jmecl.particles.ShapeSeedingStrategy;
-import org.shaman.jmecl.rendering.ParticleRenderer;
+import org.shaman.jmecl.particles.ParticleRenderer;
 
 /**
  *

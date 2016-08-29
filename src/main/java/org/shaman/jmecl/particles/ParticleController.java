@@ -23,7 +23,6 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.shaman.jmecl.OpenCLSettings;
-import org.shaman.jmecl.rendering.ParticleRenderer;
 import org.shaman.jmecl.sorting.RadixSort;
 import org.shaman.jmecl.utils.CLBlas;
 import org.shaman.jmecl.utils.SharedBuffer;

@@ -3,7 +3,7 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package org.shaman.jmecl.rendering;
+package org.shaman.jmecl.particles;
 
 import com.jme3.scene.Geometry;
 import com.jme3.scene.Mesh;
