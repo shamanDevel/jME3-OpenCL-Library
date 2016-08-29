@@ -7,9 +7,11 @@ __kernel void SeedPoint(int offset, __global float4* positions, float4 pointPos,
 	positions[idx + offset] = (float4)(pointPos.xyz, -time);
 }
 
-__kernel void SeedSphere(int offset, __global float4* positions, float4 center, float radius, float tpf, __global ulong* seeds)
+__kernel void SeedSphere(int offset, __global float4* positions, float4 centerAndRadius, float tpf, __global ulong* seeds)
 {
 	const int idx = get_global_id(0);
+	float3 center = centerAndRadius.xyz;
+	float radius = centerAndRadius.w;
 	float time = randFloat(seeds + idx) * tpf;
 	float3 pos;
 	do {
@@ -33,13 +35,22 @@ __kernel void SeedBox(int offset, __global float4* positions, float4 minBox, flo
 	positions[idx + offset] = (float4)(pos, -time);
 }
 
-__kernel void InitParticles(int offset, __global float4* velocities, 
-		float4 initialVelocity, float velocityVariation, float initialDensity, float densityVariation, __global ulong* seeds)
+__kernel void InitParticles(int offset, __global float* positions, __global float4* velocities, __global float* temperatures,
+		float4 initialVelocity, float velocityVariation, float initialDensity, 
+		float densityVariation, float initialTemperature, float temperatureVariation, __global ulong* seeds)
 {
 	const int idx = get_global_id(0);
 	float2 gauss1 = randGaussianf(seeds + idx);
 	float2 gauss2 = randGaussianf(seeds + idx);
+	float2 gauss3 = randGaussianf(seeds + idx);
+
 	float3 vel = initialVelocity.xyz + velocityVariation * (float3)(gauss1, gauss2.x);
 	float density = fmax((float) 0, initialDensity + densityVariation * gauss2.y);
-	velocities[idx + offset] = (float4)(vel, density);
+	float temp = fmax((float) 0, initialTemperature + temperatureVariation * gauss3.x);
+
+	float time = positions[4*(idx+offset) + 3];
+
+	positions[4*(idx+offset) + 3] = density;
+	velocities[idx + offset] = (float4)(vel, time);
+	temperatures[idx + offset] = temp;
 }

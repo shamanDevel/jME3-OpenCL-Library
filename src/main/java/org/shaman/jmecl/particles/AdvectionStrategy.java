@@ -17,7 +17,7 @@ public interface AdvectionStrategy {
 	
 	void resized(int newSize);
 	
-	void advect(float tpf, int offset, int count, Buffer deletionBuffer);
+	void advect(float tpf, int count, Buffer deletionBuffer);
 	
 	
 }

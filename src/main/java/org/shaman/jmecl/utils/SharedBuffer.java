@@ -13,10 +13,8 @@ import com.jme3.renderer.RenderManager;
 import com.jme3.renderer.opengl.GLRenderer;
 import com.jme3.scene.VertexBuffer;
 import com.jme3.util.BufferUtils;
-import java.nio.ByteBuffer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.lwjgl.opengl.GL11;
 
 /**
  * Represents a vertex buffer that can be access by both jME rendering system
@@ -25,9 +23,17 @@ import org.lwjgl.opengl.GL11;
  */
 public class SharedBuffer {
 	private static final Logger LOG = Logger.getLogger(SharedBuffer.class.getName());
+	/**
+	 * If save mode is enabled, all modifications work an a separate buffer
+	 * and are copied once per frame to the vertex buffer.
+	 * This is a workaround, because sometimes the real vertex buffer is cleared
+	 * and all the information is lost when it is resized.
+	 */
+	private static final boolean SAVE_MODE = true;
 	
 	private VertexBuffer jmeBuffer;
 	private Buffer clBuffer;
+	private Buffer clBuffer2;
 	private GLRenderer renderer;
 	private Context clContext;
 	
@@ -124,7 +130,12 @@ public class SharedBuffer {
 		LOG.log(Level.INFO, "uploaded to the GPU: {0}", jmeBuffer.getId());
 		
 		//create shared bufer
-		clBuffer = clContext.bindVertexBuffer(jmeBuffer, memoryAccess).register();
+		clBuffer2 = clContext.bindVertexBuffer(jmeBuffer, memoryAccess).register();
+		if (SAVE_MODE) {
+			clBuffer = clContext.createBuffer(size * components * format.getComponentSize(), memoryAccess).register();
+		} else {
+			clBuffer = clBuffer2;
+		}
 		LOG.log(Level.FINE, "OpenCL buffer created from vertex buffer: {0}", clBuffer);
 		
 		this.clContext = clContext;
@@ -137,6 +148,28 @@ public class SharedBuffer {
 
 	public Buffer getCLBuffer() {
 		return clBuffer;
+	}
+	
+	public void aquireCLBuffer(CommandQueue commandQueue) {
+		if (!SAVE_MODE) {
+			clBuffer.acquireBufferForSharingNoEvent(commandQueue);
+		}
+	}
+	
+	public void releaseCLBuffer(CommandQueue commandQueue) {
+		if (SAVE_MODE) {
+			//copy to vertex buffer
+			clBuffer2.acquireBufferForSharingNoEvent(commandQueue);
+			long size1 = clBuffer.getSize();
+			long size2 = clBuffer2.getSize();
+			if (size1 > size2) {
+				LOG.severe("wrong sizes: clBuffer.getSize()="+size1+", clBuffer2.getSize()="+size2);
+			}
+			clBuffer.copyToAsync(commandQueue, clBuffer2, Math.min(size1, size2)).release();
+			clBuffer2.releaseBufferForSharingNoEvent(commandQueue);
+		} else {
+			clBuffer.releaseBufferForSharingNoEvent(commandQueue);
+		}
 	}
 	
 	/**
@@ -159,6 +192,7 @@ public class SharedBuffer {
 		size = newSize;
 		
 		Buffer oldCLBuffer = clBuffer;
+		Buffer oldCLBuffer2 = clBuffer2;
 		
 		//create new vertex buffer
 		jmeBuffer = new VertexBuffer(type);
@@ -171,18 +205,30 @@ public class SharedBuffer {
 		renderer.updateBufferData(jmeBuffer);
 		
 		//create shared bufer
-		clBuffer = clContext.bindVertexBuffer(jmeBuffer, ma).register();
+		clBuffer2 = clContext.bindVertexBuffer(jmeBuffer, ma).register();
+		if (SAVE_MODE) {
+			clBuffer = clContext.createBuffer(size * components * format.getComponentSize(), ma).register();
+		} else {
+			clBuffer = clBuffer2;
+		}
 		
 		//copy old to new
 		if (queue != null) {
-			clBuffer.acquireBufferForSharingNoEvent(queue);
-			oldCLBuffer.acquireBufferForSharingNoEvent(queue);
-			oldCLBuffer.copyTo(queue, clBuffer, Math.min(oldCLBuffer.getSize(), clBuffer.getSize())); //Why do I get an CL_OUT_OF_RESOURCES here ?!?
-			clBuffer.releaseBufferForSharingNoEvent(queue);
-			oldCLBuffer.releaseBufferForSharingNoEvent(queue);
+			if (SAVE_MODE) {
+				oldCLBuffer.copyToAsync(queue, clBuffer, Math.min(oldCLBuffer.getSize(), clBuffer.getSize())).release();
+			} else {
+				clBuffer.acquireBufferForSharingNoEvent(queue);
+				oldCLBuffer.acquireBufferForSharingNoEvent(queue);
+				oldCLBuffer.copyToAsync(queue, clBuffer, Math.min(oldCLBuffer.getSize(), clBuffer.getSize())).release();
+				clBuffer.releaseBufferForSharingNoEvent(queue);
+				oldCLBuffer.releaseBufferForSharingNoEvent(queue);
+			}
 		}
 		
 		//delete old
 		oldCLBuffer.release();
+		if (SAVE_MODE) {
+			oldCLBuffer2.release();
+		}
 	}
 }

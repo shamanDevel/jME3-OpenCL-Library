@@ -7,6 +7,7 @@ package org.shaman.jmecl.sorting;
 
 import com.jme3.asset.AssetManager;
 import com.jme3.opencl.*;
+import java.nio.ByteBuffer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.shaman.jmecl.OpenCLSettings;
@@ -119,6 +120,10 @@ public class RadixSort implements Sorter {
 		radixsort(keys, values, 0, endBit, count);
 	}
 	
+	public Buffer getInternalBlockScan() {
+		return bfBlockScan;
+	}
+	
 	private void radixsort(Buffer bfKey, Buffer bfVal, int iStartBit, int iEndBit, long elements)
 	{
 		if (bfKey.getSize()>= cMaxArraySize * 4)
@@ -161,5 +166,25 @@ public class RadixSort implements Sorter {
 			clReorder.Run2NoEvent(clQueue, new Kernel.WorkSize(lGlobalSize), lws,
 				bfTempKey, bfKey, bfTempVal, bfVal, bfBlockScan, bfBlockOffset, j, lElementCount);
 		}
+		
+		/*
+		//test
+		int testCount = lBlockCount*(1 << RS_CBITS);
+		ByteBuffer mappedBuffer = bfBlockScan.map(clQueue, MappingAccess.MAP_READ_ONLY);
+		System.out.print("scan:");
+		for (int i=0; i<testCount; ++i) {
+			System.out.print(" " + mappedBuffer.getInt());
+		}
+		System.out.println();
+		bfBlockScan.unmap(clQueue, mappedBuffer);
+		mappedBuffer = bfBlockOffset.map(clQueue, MappingAccess.MAP_READ_ONLY);
+		System.out.print("offset:");
+		for (int i=0; i<testCount; ++i) {
+			System.out.print(" " + mappedBuffer.getInt());
+		}
+		System.out.println();
+		bfBlockOffset.unmap(clQueue, mappedBuffer);
+		System.out.println();
+		*/
 	}
 }

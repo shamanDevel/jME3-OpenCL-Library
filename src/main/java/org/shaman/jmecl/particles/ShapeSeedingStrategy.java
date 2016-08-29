@@ -6,6 +6,7 @@
 package org.shaman.jmecl.particles;
 
 import com.jme3.math.Vector3f;
+import com.jme3.math.Vector4f;
 import com.jme3.opencl.Buffer;
 import com.jme3.opencl.CommandQueue;
 import com.jme3.opencl.Kernel;
@@ -32,10 +33,12 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 	private Kernels kernels;
 	
 	private float particlesPerSecond;
-	private Vector3f initialVelocity;
+	private final Vector4f initialVelocity = new Vector4f();
 	private float velocityVariation;
 	private float initialDensity;
 	private float densityVariation;
+	private float initialTemperature;
+	private float temperatureVariation;
 	private Shape shape;
 
 	public float getParticlesPerSecond() {
@@ -47,14 +50,16 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 	}
 
 	public Vector3f getInitialVelocity() {
-		return initialVelocity;
+		return new Vector3f(initialVelocity.x, initialVelocity.y, initialVelocity.z);
 	}
 
 	public void setInitialVelocity(Vector3f initialVelocity) {
 		if (initialVelocity == null) {
 			throw new NullPointerException("initial velocity is null");
 		}
-		this.initialVelocity = initialVelocity;
+		this.initialVelocity.x = initialVelocity.x;
+		this.initialVelocity.y = initialVelocity.y;
+		this.initialVelocity.z = initialVelocity.z;
 	}
 
 	public float getVelocityVariation() {
@@ -90,6 +95,25 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 		this.densityVariation = densityVariation;
 	}
 
+	public float getInitialTemperature() {
+		return initialTemperature;
+	}
+
+	public void setInitialTemperature(float initialTemperature) {
+		this.initialTemperature = initialTemperature;
+	}
+
+	public float getTemperatureVariation() {
+		return temperatureVariation;
+	}
+
+	public void setTemperatureVariation(float temperatureVariation) {
+		if (temperatureVariation < 0) {
+			throw new IllegalArgumentException("temperature variation must not be negative");
+		}
+		this.temperatureVariation = temperatureVariation;
+	}
+	
 	public Shape getShape() {
 		return shape;
 	}
@@ -121,7 +145,7 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 				long[] seeds = new long[kernels.seedCount];
 				for (int i = 0; i < kernels.seedCount; ++i) {
 					seeds[i] = initRandom.nextLong();
-						seeds[i] = (seeds[i] ^ 0x5DEECE66DL) & ((1L << 48) - 1);
+					seeds[i] = (seeds[i] ^ 0x5DEECE66DL) & ((1L << 48) - 1);
 				}
 				ByteBuffer tmpByteBuffer = BufferUtils.createByteBuffer(8 * kernels.seedCount);
 				tmpByteBuffer.asLongBuffer().put(seeds);
@@ -152,8 +176,7 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 
 	@Override
 	public int getNewParticlesCount(float tpf) {
-		//return (int) Math.ceil(tpf * particlesPerSecond);
-		return 1;
+		return (int) Math.ceil(tpf * particlesPerSecond);
 	}
 
 	@Override
@@ -163,15 +186,7 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 		Kernel.WorkSize ws = new Kernel.WorkSize();
 		Buffer positionBuffer = controller.getBuffer(VertexBuffer.Type.Position).getCLBuffer();
 		Buffer velocityBuffer = controller.getBuffer(VertexBuffer.Type.TexCoord2).getCLBuffer();
-		
-		TempVars vars = TempVars.get();
-		try {
-			
-		kernels.clQueue.finish();
-		positionBuffer.acquireBufferForSharingNoEvent(kernels.clQueue);
-		kernels.clQueue.finish();
-		velocityBuffer.acquireBufferForSharingNoEvent(kernels.clQueue);
-		kernels.clQueue.finish();
+		Buffer temperatureBuffer = controller.getBuffer(VertexBuffer.Type.TexCoord3).getCLBuffer();
 		
 		//seed particles
 		int offset2 = offset;
@@ -180,26 +195,14 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 			int s = Math.min(left, kernels.seedCount);
 			ws.set(1, s, 1, 1);
 			if (shape instanceof Point) {
-				vars.vect4f1.setX(((Point) shape).position.x);
-				vars.vect4f1.setY(((Point) shape).position.y);
-				vars.vect4f1.setZ(((Point) shape).position.z);
 				kernels.SeedPointKernel.Run1NoEvent(kernels.clQueue, ws, offset2, positionBuffer, 
-						vars.vect4f1, tpf, kernels.seeds);
+						((Point) shape).position, tpf, kernels.seeds);
 			} else if (shape instanceof Sphere) {
-				vars.vect4f1.setX(((Sphere) shape).center.x);
-				vars.vect4f1.setY(((Sphere) shape).center.y);
-				vars.vect4f1.setZ(((Sphere) shape).center.z);
 				kernels.SeedSphereKernel.Run1NoEvent(kernels.clQueue, ws, offset2, positionBuffer, 
-						vars.vect4f1, ((Sphere) shape).radius, tpf, kernels.seeds);
+						((Sphere) shape).centerAndRadius, tpf, kernels.seeds);
 			} else if (shape instanceof Box) {
-				vars.vect4f1.setX(((Box) shape).min.x);
-				vars.vect4f1.setY(((Box) shape).min.y);
-				vars.vect4f1.setZ(((Box) shape).min.z);
-				vars.vect4f2.setX(((Box) shape).max.x);
-				vars.vect4f2.setY(((Box) shape).max.y);
-				vars.vect4f2.setZ(((Box) shape).max.z);
 				kernels.SeedBoxKernel.Run1NoEvent(kernels.clQueue, ws, offset2, positionBuffer, 
-						vars.vect4f1, vars.vect4f2, tpf, kernels.seeds);
+						((Box) shape).min, ((Box) shape).max, tpf, kernels.seeds);
 			}
 			left -= s;
 			offset2 += s;
@@ -207,20 +210,11 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 		
 		//init particles
 		ws.set(1, actualCount, 1, 1);
-		vars.vect4f1.setX(initialVelocity.x);
-		vars.vect4f1.setY(initialVelocity.y);
-		vars.vect4f1.setZ(initialVelocity.z);
-		kernels.InitParticlesKernel.Run1NoEvent(kernels.clQueue, ws, offset, velocityBuffer,
-				vars.vect4f1, velocityVariation, initialDensity, densityVariation, kernels.seeds);
-		
-		positionBuffer.releaseBufferForSharingNoEvent(kernels.clQueue);
-		velocityBuffer.releaseBufferForSharingNoEvent(kernels.clQueue);
-		kernels.clQueue.finish();
-		
-		} finally {
-			vars.release();
-		}
-		
+		kernels.InitParticlesKernel.Run1NoEvent(kernels.clQueue, ws, offset, 
+				positionBuffer, velocityBuffer, temperatureBuffer,
+				initialVelocity, velocityVariation, initialDensity, densityVariation, initialTemperature, temperatureVariation,
+				kernels.seeds);
+
 		return actualCount;
 	}
 	
@@ -228,14 +222,14 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 		//marker interface
 	}
 	public static class Point implements Shape {
-		private final Vector3f position;
+		private final Vector4f position;
 
 		public Point(Vector3f position) {
-			this.position = position;
+			this.position = new Vector4f(position.x, position.y, position.z, 0);
 		}
 
 		public Vector3f getPosition() {
-			return position;
+			return new Vector3f(position.x, position.y, position.z);
 		}
 
 		@Override
@@ -245,48 +239,46 @@ public class ShapeSeedingStrategy implements SeedingStrategy {
 		
 	}
 	public static class Sphere implements Shape {
-		private final Vector3f center;
-		private final float radius;
+		private final Vector4f centerAndRadius;
 
 		public Sphere(Vector3f center, float radius) {
-			this.center = center;
-			this.radius = radius;
+			this.centerAndRadius = new Vector4f(center.x, center.y, center.z, radius);
 		}
 
 		public Vector3f getCenter() {
-			return center;
+			return new Vector3f(centerAndRadius.x, centerAndRadius.y, centerAndRadius.z);
 		}
-
+		
 		public float getRadius() {
-			return radius;
+			return centerAndRadius.w;
 		}
 
 		@Override
 		public String toString() {
-			return "SphereShape{" + "center=" + center + ", radius=" + radius + '}';
+			return "SphereShape{" + "center=" + getCenter() + ", radius=" + getRadius() + '}';
 		}
 		
 	}
 	public static class Box implements Shape {
-		private final Vector3f min;
-		private final Vector3f max;
+		private final Vector4f min;
+		private final Vector4f max;
 
 		public Box(Vector3f min, Vector3f max) {
-			this.min = min;
-			this.max = max;
+			this.min = new Vector4f(min.x, min.y, min.z, 0);
+			this.max = new Vector4f(max.x, max.y, max.z, 0);
 		}
 
 		public Vector3f getMin() {
-			return min;
+			return new Vector3f(min.x, min.y, min.z);
 		}
 
 		public Vector3f getMax() {
-			return max;
+			return new Vector3f(max.x, max.y, max.z);
 		}
 
 		@Override
 		public String toString() {
-			return "BoxShape{" + "min=" + min + ", max=" + max + '}';
+			return "BoxShape{" + "min=" + getMin() + ", max=" + getMax() + '}';
 		}
 		
 	}
