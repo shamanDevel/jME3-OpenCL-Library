@@ -34,3 +34,34 @@ __kernel void Iteration2D(__global float* xIn, __global float* xOut, __global fl
 	//printf("idx=%d, i=%d, j=%d, b=%2.3f, sum=%2.3f, a=(%2.2f, %2.2f, %2.2f, %2.2f, %2.2f), x=%2.2f\n", idx, ij.x, ij.y, b, sum, a00, a10, a20, a01, a02, x00);
 }
 
+__kernel void Iteration3D(__global float* xIn, __global float* xOut, __global float* bIn, 
+		__global float* AIn, int resX, int resY, int resZ, __global float* residuum)
+{
+	const int idx = get_global_id(0);
+	const int size = get_global_size(0);
+	
+	int3 ijk;
+	int3 res = (int3)(resX, resY, resZ);
+	L_INVSZ_3D(idx, ijk, res);
+
+	float x000 = xIn[idx];
+	float b = bIn[idx];
+	float a000 = AIn[idx]; //A[i,j]
+	float a100 = AIn[idx+1*size]; //A[i-1, j, k]
+	float a200 = AIn[idx+2*size]; //A[i+1, j, k]
+	float a010 = AIn[idx+3*size]; //A[i, j-1, k]
+	float a020 = AIn[idx+4*size]; //A[i, j+1, k]
+	float a001 = AIn[idx+5*size]; //A[i, j, k-1]
+	float a002 = AIn[idx+6*size]; //A[i, j, k+1]
+	
+	float sum = a000*x000;
+	if (ijk.x>0) sum += xIn[LSZ_3D((int3)(ijk.x-1, ijk.y, ijk.z), res)] * a100;
+	if (ijk.x<resX-1) sum += xIn[LSZ_3D((int3)(ijk.x+1, ijk.y, ijk.z), res)] * a200;
+	if (ijk.y>0) sum += xIn[LSZ_3D((int3)(ijk.x, ijk.y-1, ijk.z), res)] * a010;
+	if (ijk.y<resY-1) sum += xIn[LSZ_3D((int3)(ijk.x, ijk.y+1, ijk.z), res)] * a020;
+	if (ijk.z>0) sum += xIn[LSZ_3D((int3)(ijk.x, ijk.y, ijk.z-1), res)] * a001;
+	if (ijk.z<resZ-1) sum += xIn[LSZ_3D((int3)(ijk.x, ijk.y, ijk.z+1), res)] * a002;
+	float r = b - sum;
+	residuum[idx] = r;
+	xOut[idx] = x000 + r/a000;
+}

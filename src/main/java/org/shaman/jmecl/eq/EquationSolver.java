@@ -12,6 +12,9 @@ import org.shaman.jmecl.utils.CLBlas;
 /**
  * Base class for all sparse linear equation solvers on floats, it solves Ax=b for x.
  * The matrix is defined as a 7-stencil (5-stencil in 2D).
+ * The matrix elements are specified by {@link #setA(com.jme3.opencl.Buffer, int, int, int) }
+ * and the b vector by accessing {@link #getBBuffer() }.
+ * The linear system is solved with an invocation of {@link #solve(int, float) }.
  * @author Sebastian
  */
 public abstract class EquationSolver {
@@ -25,6 +28,13 @@ public abstract class EquationSolver {
 	protected final Buffer bufX;
 	protected final Buffer bufB;
 
+	/**
+	 * Initializes the 3d version of the solver.
+	 * @param clSettings the OpenCL settings
+	 * @param resolutionX the x-resolution
+	 * @param resolutionY the y-resolution
+	 * @param resolutionZ the z-resolution
+	 */
 	public EquationSolver(OpenCLSettings clSettings, int resolutionX, int resolutionY, int resolutionZ) {
 		this.clSettings = clSettings;
 		this.resolutionX = resolutionX;
@@ -36,6 +46,12 @@ public abstract class EquationSolver {
 		this.bufB = clSettings.getClContext().createBuffer(size);
 	}
 
+	/**
+	 * Initializes the 2d version of the solver.
+	 * @param clSettings the OpenCL settings
+	 * @param resolutionX the x-resolution
+	 * @param resolutionY the y-resolution
+	 */
 	public EquationSolver(OpenCLSettings clSettings, int resolutionX, int resolutionY) {
 		this.clSettings = clSettings;
 		this.resolutionX = resolutionX;
@@ -47,34 +63,70 @@ public abstract class EquationSolver {
 		this.bufB = clSettings.getClContext().createBuffer(size);
 	}
 
+	/**
+	 * Returns {@code true} if the solver runs in the 2D mode.
+	 * @return {@code true} if 2D, {@code false} if 3D.
+	 */
 	public boolean is2D() {
 		return twoD;
 	}
 
+	/**
+	 * @return the x-resolution
+	 */
 	public int getResolutionX() {
 		return resolutionX;
 	}
 
+	/**
+	 * @return the y-resolution
+	 */
 	public int getResolutionY() {
 		return resolutionY;
 	}
 
+	/**
+	 * @return the z-resolution, 1 if 2D
+	 */
 	public int getResolutionZ() {
 		return resolutionZ;
 	}
 
+	/**
+	 * Accesses the x buffer (the solution).
+	 * It is a buffer of size {@code resolutionX*resolutionY*resolutionZ} 
+	 * containing floats.
+	 * @return the x buffer
+	 */
 	public Buffer getXBuffer() {
 		return bufX;
 	}
 
+	/**
+	 * Accesses the b buffer (the right hand side of the equation).
+	 * It is a buffer of size {@code resolutionX*resolutionY*resolutionZ} 
+	 * containing floats.
+	 * @return the b buffer
+	 */
 	public Buffer getBBuffer() {
 		return bufB;
 	}
 
+	/**
+	 * Sets the x buffer to zero.
+	 */
 	public void setXToZero() {
 		CLBlas.get(clSettings, Float.class).fill(bufX, 0.0f);
 	}
 	
+	/**
+	 * For the implementations: tests if the arguments to 
+	 * {@link #setA(com.jme3.opencl.Buffer, int, int, int) } are valid.
+	 * @param buf
+	 * @param stencilX
+	 * @param stencilY
+	 * @param stencilZ 
+	 */
 	protected void checkStencil(Buffer buf, int stencilX, int stencilY, int stencilZ) {
 		if (is2D()) {
 			if (stencilZ != 0) {
@@ -102,9 +154,34 @@ public abstract class EquationSolver {
 					(resolutionX*resolutionY*resolutionZ*4)+", actual: "+buf.getSize());
 		}
 	}
+	/**
+	 * Sets a stencil component of the A-matrix.
+	 * Allowed stencil values are: (0,0,0), (1,0,0), (-1,0,0), (0,1,0), (0,-1,0),
+	 * (0,0,1) and (0,0,-1). In the 2D mode, the z-coordinate must be zero.
+	 * After setting all stencil values, call {@link #assembleMatrix() }.
+	 * @param buf the buffer, must contain {@code resolutionX*resolutionY*resolutionZ} 
+	 * floats.
+	 * @param stencilX the x coordinate of the stencil
+	 * @param stencilY the y coordinate of the stencil
+	 * @param stencilZ the z coordinate of the stencil
+	 */
 	public abstract void setA(Buffer buf, int stencilX, int stencilY, int stencilZ);
 	
+	/**
+	 * Assembles the A-matrix.
+	 * This must be called after all stencil components are set by
+	 * {@link #setA(com.jme3.opencl.Buffer, int, int, int) }.
+	 * It is needed e.g. by a multigrid solver to assemble the hierarchy.
+	 */
 	public void assembleMatrix() {}
 	
+	/**
+	 * Solves the linear system.
+	 * Two termination criteria are available: either the solver reaches
+	 * the specified maximal number of iterations, or the L2-norm of the residuum
+	 * falls below the specified maximal error.
+	 * @param maxIteration the maximal number of iterations
+	 * @param maxError the maximal error of the residuum.
+	 */
 	public abstract void solve(int maxIteration, float maxError);
 }
