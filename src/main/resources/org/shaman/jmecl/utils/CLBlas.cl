@@ -136,8 +136,8 @@ REDUCE_TEMPLATE(a*a*b , a*b , 1, SQUARE_MUL)
 REDUCE_TEMPLATE(fmin(a*a,b) , fmin(a,b) , TYPE_MAX, SQUARE_MIN)
 REDUCE_TEMPLATE(fmax(a*a,b) , fmax(a,b) , TYPE_MIN, SQUARE_MAX)
 #else
-REDUCE_TEMPLATE(min(a*a,b) , min(a,b) , TYPE_MAX, SQUARE_MIN)
-REDUCE_TEMPLATE(max(a*a,b) , max(a,b) , TYPE_MIN, SQUARE_MAX)
+REDUCE_TEMPLATE(min((TYPE) (a*a),b) , min(a,b) , TYPE_MAX, SQUARE_MIN)
+REDUCE_TEMPLATE(max((TYPE) (a*a),b) , max(a,b) , TYPE_MIN, SQUARE_MAX)
 #endif
 
 #define REDUCE2_TEMPLATE(op1, op2, neutralElement, name) \
