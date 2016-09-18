@@ -109,7 +109,7 @@ public class JacobiSolver extends EquationSolver {
 					i++;
 					break;
 				}
-				LOG.info("Iteration "+i+": residium="+residuum);
+				LOG.log(Level.FINE, "Iteration {0}: residium={1}", new Object[]{i, residuum});
 			}
 			if (i%2 == 1) {
 				bufs[1].copyToAsync(q, bufs[0]).release();
@@ -131,7 +131,7 @@ public class JacobiSolver extends EquationSolver {
 					i++;
 					break;
 				}
-				LOG.info("Iteration "+i+": residium="+residuum);
+				LOG.log(Level.FINE, "Iteration {0}: residium={1}", new Object[]{i, residuum});
 			}
 			if (i%2 == 1) {
 				bufs[1].copyToAsync(q, bufs[0]).release();

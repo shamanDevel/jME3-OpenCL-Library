@@ -5,6 +5,7 @@
  */
 package org.shaman.jmecl.fluids;
 
+import com.jme3.opencl.Buffer;
 import org.shaman.jmecl.utils.CLBlas;
 
 /**
@@ -15,6 +16,10 @@ public class RealGrid extends Grid {
 	
 	RealGrid(FluidSolver solver) {
 		super(solver.clSettings.getClContext().createBuffer(4 * solver.getResolutionX() * solver.getResolutionY() * solver.getResolutionZ()), solver);
+	}
+	
+	RealGrid(FluidSolver solver, Buffer buffer) {
+		super(buffer, solver);
 	}
 	
 	public void fill(float value) {

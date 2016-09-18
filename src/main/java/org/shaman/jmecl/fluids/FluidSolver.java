@@ -6,6 +6,7 @@
 package org.shaman.jmecl.fluids;
 
 import org.shaman.jmecl.OpenCLSettings;
+import org.shaman.jmecl.eq.EquationSolver;
 
 /**
  *

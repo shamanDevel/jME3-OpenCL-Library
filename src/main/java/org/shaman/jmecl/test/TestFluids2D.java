@@ -39,6 +39,7 @@ public class TestFluids2D extends SimpleApplication {
 	private Buoyancy buoyancy;
 	private Vector3f gravity;
 	private Advection advection;
+	private PressureProjection pressureProjection;
 	
 	/**
 	 * @param args the command line arguments
@@ -60,8 +61,8 @@ public class TestFluids2D extends SimpleApplication {
 		CommandQueue clCommandQueue = clContext.createQueue();
 		OpenCLSettings clSettings = new OpenCLSettings(clContext, clCommandQueue, null, assetManager);
 		
-		int resolutionX = 32;
-		int resolutionY = 32;
+		int resolutionX = 256;
+		int resolutionY = 256;
 		solver = new FluidSolver(clSettings, resolutionX, resolutionY);
 		flags = solver.createFlagGrid();
 		flags.fill(FlagGrid.CellType.TypeFluid);
@@ -87,38 +88,44 @@ public class TestFluids2D extends SimpleApplication {
 		guiNode.attachChild(densityTextureGeom);
 		
 		boundaryTools = new BoundaryTools(solver);
-		boundaryTools.setFlagsInRect(boundaryFlags, FlagGrid.CellType.TypeInflow, new int[]{resolutionX/4, resolutionY/8}, new int[]{resolutionX/2, resolutionY/8});
+		boundaryTools.setFlagsInRect(boundaryFlags, FlagGrid.CellType.TypeInflow, new int[]{resolutionX/2-resolutionX/8, resolutionY/16}, new int[]{resolutionX/4, resolutionY/8});
 		
 		buoyancy = new Buoyancy(solver);
 		gravity = new Vector3f(0, -9.81f, 0);
 		advection = new Advection(solver);
+		
+		pressureProjection = new PressureProjection(solver);
+		pressureProjection.setBoundary(flags);
+		pressureProjection.setMaxError(1e-5f);
+		pressureProjection.setMaxIterations(10000);
 	}
 
 	@Override
 	public void simpleUpdate(float tpf) {
 		float timestep = 0.1f;
 		boundaryTools.applyDirichlet(density, boundaryFlags, FlagGrid.CellType.TypeInflow, 1.0f);
-//		System.out.println("Pre-Advect");
-//		debugTools.printGrid2D(velocity);
+
 		advection.advect(velocity, density, timestep, 1);
 		advection.advect(velocity, velocity, timestep, 1);
-//		System.out.println("Post-Advect");
-//		debugTools.printGrid2D(velocity);
-		buoyancy.addBuoynacy(flags, density, velocity, gravity, timestep);
-		System.out.println("Post-Buoyancy");
-		debugTools.printGrid2D(velocity);
 		
+		buoyancy.addBuoynacy(flags, density, velocity, gravity, timestep);
+		
+//		System.out.println("Pre-Pressure");
+//		debugTools.printGrid2D(velocity);
+		pressureProjection.project(velocity);
+//		System.out.println("Post-Pressure");
+//		debugTools.printGrid2D(velocity);
 		
 		debugTools.fillTextureWithDensity2D(density, densityTexture);
 		
-//		try {
-//			Thread.sleep(100);
-//		} catch (InterruptedException ex) {
-//			Logger.getLogger(TestFluids2D.class.getName()).log(Level.SEVERE, null, ex);
-//		}
-//		//stop();
-//		System.out.println();
-//		System.out.println();
+		try {
+			Thread.sleep(100);
+		} catch (InterruptedException ex) {
+			Logger.getLogger(TestFluids2D.class.getName()).log(Level.SEVERE, null, ex);
+		}
+//		stop();
+		System.out.println();
+		System.out.println();
 	}
 
 }

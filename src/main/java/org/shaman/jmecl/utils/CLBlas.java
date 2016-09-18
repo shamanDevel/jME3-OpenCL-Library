@@ -74,7 +74,7 @@ public final class CLBlas<T extends Number> {
 				return b.getDouble();
 			}
 		}));
-		specs.put(Byte.class, new ElementSpecs(4, "char", false, "CHAR_MAX", "CHAR_MIN", new ElementGetter() {
+		specs.put(Byte.class, new ElementSpecs(1, "char", false, "CHAR_MAX", "CHAR_MIN", new ElementGetter() {
 			@Override
 			public Number get(ByteBuffer b) {
 				return b.get();

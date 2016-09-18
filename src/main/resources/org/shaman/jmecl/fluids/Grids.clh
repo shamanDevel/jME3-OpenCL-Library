@@ -202,6 +202,26 @@ float MACGrid_getInterpolatedZ(MACGrid_t grid, GridPosition_t pos, GridSize_t si
 		  + (grid[idx+X+Z]*t0 + grid[idx+X+Y+Z]*t1) * s1) * f1;
 }
 
+float MACGrid_getX(MACGrid_t grid, GridIndex_t index, GridSize_t size)
+{
+	int i = LSZ(index, (int3)(size.x+1, size.y, size.z));
+	return grid[i];
+}
+
+float MACGrid_getY(MACGrid_t grid, GridIndex_t index, GridSize_t size)
+{
+	int offset = (size.x+1) * size.y * size.z;
+	int i = LSZ(index, (int3)(size.x, size.y+1, size.z));
+	return grid[i + offset];
+}
+
+float MACGrid_getZ(MACGrid_t grid, GridIndex_t index, GridSize_t size)
+{
+	int offset = (size.x+1) * size.y * size.z + size.x * (size.y+1) * size.z;
+	int i = LSZ(index, (int3)(size.x, size.y, size.z+1));
+	return grid[i + offset];
+}
+
 __global float* MACGrid_getPointerX(MACGrid_t grid, GridIndex_t index, GridSize_t size)
 {
 	int i = LSZ(index, (int3)(size.x+1, size.y, size.z));
@@ -230,9 +250,6 @@ __constant int CellType_Inflow   = 8;
 __constant int CellType_Outflow  = 16;
 __constant int CellType_Open     = 32;
 __constant int CellType_Stick    = 128;
-__constant int CellType_Reserved = 256;
-		// 2^10 - 2^14 reserved for moving obstacles
-__constant int CellType_ZeroPressure = (1<<15);
 
 int FlagGrid_get(FlagGrid_t grid, GridIndex_t index, GridSize_t size)
 {

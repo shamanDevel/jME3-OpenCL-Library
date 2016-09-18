@@ -21,16 +21,13 @@ public class FlagGrid extends Grid {
 		TypeInflow(8),
 		TypeOutflow(16),
 		TypeOpen(32),
-		TypeStick(128),
-		TypeReserved(256),
-		// 2^10 - 2^14 reserved for moving obstacles
-		TypeZeroPressure(1<<15);
+		TypeStick(128);
 				
-	public final int value;
+		public final int value;
 
-	private CellType(int value) {
-		this.value = value;
-	}
+		private CellType(int value) {
+			this.value = value;
+		}
 	
 	};
 	
