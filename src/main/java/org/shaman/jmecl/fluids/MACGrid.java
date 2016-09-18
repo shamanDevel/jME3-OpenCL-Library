@@ -19,7 +19,7 @@ public class MACGrid extends Grid {
 		long sizeX = (solver.getResolutionX()+1) * solver.getResolutionY() * solver.getResolutionZ();
 		long sizeY = solver.getResolutionX() * (solver.getResolutionY()+1) * solver.getResolutionZ();
 		long sizeZ = solver.getResolutionX() * solver.getResolutionY() * (solver.getResolutionZ()+1);
-		buffer = solver.clSettings.getClContext().createBuffer(sizeX + sizeY + (solver.is2D() ? 0 : sizeZ));
+		buffer = solver.clSettings.getClContext().createBuffer(4 * (sizeX + sizeY + (solver.is2D() ? 0 : sizeZ)));
 	}
 
 	public void fill(Vector3f v) {

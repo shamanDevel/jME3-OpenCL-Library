@@ -6,16 +6,20 @@
 package org.shaman.jmecl.test;
 
 import com.jme3.app.SimpleApplication;
+import com.jme3.material.Material;
+import com.jme3.material.RenderState;
 import com.jme3.math.Vector3f;
 import com.jme3.opencl.CommandQueue;
 import com.jme3.opencl.Context;
+import com.jme3.renderer.queue.RenderQueue;
+import com.jme3.scene.Geometry;
+import com.jme3.scene.shape.Quad;
 import com.jme3.system.AppSettings;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.shaman.jmecl.OpenCLSettings;
-import org.shaman.jmecl.fluids.Buoyancy;
-import org.shaman.jmecl.fluids.FlagGrid;
-import org.shaman.jmecl.fluids.FluidSolver;
-import org.shaman.jmecl.fluids.MACGrid;
-import org.shaman.jmecl.fluids.RealGrid;
+import org.shaman.jmecl.fluids.*;
+import org.shaman.jmecl.utils.SharedTexture;
 
 /**
  *
@@ -25,11 +29,16 @@ public class TestFluids2D extends SimpleApplication {
 
 	private FluidSolver solver;
 	private FlagGrid flags;
+	private FlagGrid boundaryFlags;
 	private RealGrid density;
 	private MACGrid velocity;
+	private SharedTexture densityTexture;
 	
+	private DebugTools debugTools;
+	private BoundaryTools boundaryTools;
 	private Buoyancy buoyancy;
 	private Vector3f gravity;
+	private Advection advection;
 	
 	/**
 	 * @param args the command line arguments
@@ -51,26 +60,65 @@ public class TestFluids2D extends SimpleApplication {
 		CommandQueue clCommandQueue = clContext.createQueue();
 		OpenCLSettings clSettings = new OpenCLSettings(clContext, clCommandQueue, null, assetManager);
 		
-		int resolutionX = 128;
-		int resolutionY = 128;
+		int resolutionX = 32;
+		int resolutionY = 32;
 		solver = new FluidSolver(clSettings, resolutionX, resolutionY);
 		flags = solver.createFlagGrid();
 		flags.fill(FlagGrid.CellType.TypeFluid);
+		boundaryFlags = solver.createFlagGrid();
+		boundaryFlags.fill(FlagGrid.CellType.TypeEmpty);
 		density = solver.createRealGrid();
 		density.fill(0);
 		velocity = solver.createMACGrid();
 		velocity.fill(Vector3f.ZERO);
+//		velocity.fill(new Vector3f(0.6f, 1.5f, 0));
+		
+		debugTools = new DebugTools(solver);
+		densityTexture = debugTools.createDensityTexture(renderManager);
+		Geometry densityTextureGeom = new Geometry("density", new Quad(resolutionX, resolutionY));
+		Material densityTextureMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+		densityTextureMat.setTexture("ColorMap", densityTexture.getJMETexture());
+		//densityTextureMat.setTexture("ColorMap", assetManager.loadTexture("org/shaman/jmecl/test/singlesmoke.png"));
+		densityTextureMat.getAdditionalRenderState().setFaceCullMode(RenderState.FaceCullMode.Off);
+		densityTextureMat.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
+		densityTextureGeom.setMaterial(densityTextureMat);
+		densityTextureGeom.setLocalTranslation(150, 150, 0);
+		densityTextureGeom.setQueueBucket(RenderQueue.Bucket.Gui);
+		guiNode.attachChild(densityTextureGeom);
+		
+		boundaryTools = new BoundaryTools(solver);
+		boundaryTools.setFlagsInRect(boundaryFlags, FlagGrid.CellType.TypeInflow, new int[]{resolutionX/4, resolutionY/8}, new int[]{resolutionX/2, resolutionY/8});
 		
 		buoyancy = new Buoyancy(solver);
 		gravity = new Vector3f(0, -9.81f, 0);
+		advection = new Advection(solver);
 	}
 
 	@Override
 	public void simpleUpdate(float tpf) {
-	
-		float timestep = tpf;
+		float timestep = 0.1f;
+		boundaryTools.applyDirichlet(density, boundaryFlags, FlagGrid.CellType.TypeInflow, 1.0f);
+//		System.out.println("Pre-Advect");
+//		debugTools.printGrid2D(velocity);
+		advection.advect(velocity, density, timestep, 1);
+		advection.advect(velocity, velocity, timestep, 1);
+//		System.out.println("Post-Advect");
+//		debugTools.printGrid2D(velocity);
 		buoyancy.addBuoynacy(flags, density, velocity, gravity, timestep);
+		System.out.println("Post-Buoyancy");
+		debugTools.printGrid2D(velocity);
 		
+		
+		debugTools.fillTextureWithDensity2D(density, densityTexture);
+		
+//		try {
+//			Thread.sleep(100);
+//		} catch (InterruptedException ex) {
+//			Logger.getLogger(TestFluids2D.class.getName()).log(Level.SEVERE, null, ex);
+//		}
+//		//stop();
+//		System.out.println();
+//		System.out.println();
 	}
 
 }

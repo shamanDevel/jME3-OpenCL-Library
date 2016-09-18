@@ -4,6 +4,8 @@
 #ifndef LSZ
 #define LSZ(vi, sz)			((vi).x + ((vi).y + (vi).z * (sz).y) * (sz).x)
 #define L_INVSZ(i, vi, sz)	(vi).z = i / ((sz).x*(sz).y); (vi).y = (i - (vi).z*(sz).x*(sz).y)/(sz).x; (vi).x = i - (sz).x*((vi).y + (vi).z*(sz).y);
+#else
+#warning "LSZ macros already defined"
 #endif
 
 typedef __global float* RealGrid_t;
@@ -16,6 +18,16 @@ typedef float3 GridPosition_t;
 bool Grid_isValid(GridIndex_t index, GridSize_t size)
 {
 	return index.x>=0 && index.y>=0 && index.z>=0 && index.x<size.x && index.y<size.y && index.z<size.z;
+}
+
+GridIndex_t Grid_clampIndex(GridIndex_t index, GridSize_t size)
+{
+	return clamp(index, (int3)(0), size-(int3)(1));
+}
+
+GridPosition_t Grid_clampPos(GridPosition_t pos, GridSize_t size)
+{
+	return clamp(pos, (float3)(0), convert_float(size)-(float3)(1));
 }
 
 float RealGrid_get(RealGrid_t grid, GridIndex_t index, GridSize_t size)
@@ -71,26 +83,139 @@ float RealGrid_getInterpolatedHi(RealGrid_t grid, GridPosition_t pos, GridSize_t
 		return RealGrid_getInterpolatedCubic(grid, pos, size);
 }
 
-float3 MACGrid_getCentered(MACGrid_t grid, GridIndex_t index, GridSize_t size)
+float3 MACGrid_getCentered2D(MACGrid_t grid, GridIndex_t index, GridSize_t size)
+{
+	GridSize_t sizeX = size + (int3)(1,0,0);
+	GridSize_t sizeY = size + (int3)(0,1,0);
+	int idx1 = LSZ(index, sizeX);
+	int idx2 = LSZ(index, sizeY) + (sizeX.x * sizeX.y);
+	float3 v = (float3)(0.5) * (float3)(grid[idx1] + grid[idx1+1], grid[idx2] + grid[idx2+size.x], 0);
+	//printf("index=%2.3d,%2.3d : size=%2.3d,%2.3d : idx1=%4.4d, idx2=%4.4d  --> (%2.3f,%2.3f)\n", index.x, index.y, size.x, size.y, idx1, idx2, v.x, v.y);
+	return v;
+}
+
+float3 MACGrid_getCentered3D(MACGrid_t grid, GridIndex_t index, GridSize_t size)
 {
 	//TODO
 	return 0;
 }
 
-__global float* MACGRid_getPointerX(MACGrid_t grid, GridIndex_t index, GridSize_t size)
+float3 MACGrid_getAtMACX2D(MACGrid_t grid, GridIndex_t index, GridSize_t size) //bnd=1
+{
+	GridSize_t sizeX = size + (int3)(1,0,0);
+	GridSize_t sizeY = size + (int3)(0,1,0);
+	int idx1 = LSZ(index, sizeX);
+	int idx2 = LSZ(index, sizeY) + (sizeX.x * sizeX.y);
+	float3 v = (float3)( (grid[idx1]),
+	                0.25*(grid[idx2]+grid[idx2-1]+grid[idx2+size.x]+grid[idx2+size.x-1]),
+                         0 );
+	return v;
+}
+
+float3 MACGrid_getAtMACY2D(MACGrid_t grid, GridIndex_t index, GridSize_t size) //bnd=1
+{
+	GridSize_t sizeX = size + (int3)(1,0,0);
+	GridSize_t sizeY = size + (int3)(0,1,0);
+	int idx1 = LSZ(index, sizeX);
+	int idx2 = LSZ(index, sizeY) + (sizeX.x * sizeX.y);
+	float3 v = (float3)(0.2f*(grid[idx1]+grid[idx1-size.x-1]+grid[idx1+1]+grid[idx1-size.x]),
+	                         (grid[idx2]),
+                             0 );
+	return v;
+}
+
+float MACGrid_getInterpolatedX(MACGrid_t grid, GridPosition_t pos, GridSize_t size)
+{
+	float px=pos.x-0.5, py=pos.y-0.5, pz=pos.z-0.5;
+    int xi = (int)px;
+    int yi = (int)py;
+    int zi = (int)pz;
+    float s1 = px-(float)xi, s0 = 1.-s1;
+    float t1 = py-(float)yi, t0 = 1.-t1;
+    float f1 = pz-(float)zi, f0 = 1.-f1;
+    /* clamp to border */
+    if (px < 0.) { xi = 0; s0 = 1.0; s1 = 0.0; }
+    if (py < 0.) { yi = 0; t0 = 1.0; t1 = 0.0; }
+    if (pz < 0.) { zi = 0; f0 = 1.0; f1 = 0.0; }
+    if (xi >= size.x-1) { xi = size.x-2; s0 = 0.0; s1 = 1.0; }
+    if (yi >= size.y-1) { yi = size.y-2; t0 = 0.0; t1 = 1.0; }
+    if (size.z>1) { if (zi >= size.z-1) { zi = size.z-2; f0 = 0.0; f1 = 1.0; } }
+	int X = 1;
+	int Y = size.x+1;
+	int Z = Y*size.y;
+	int idx = xi + Y*yi + Z*zi;
+	return ((grid[idx]    *t0 + grid[idx+Y]    *t1) * s0
+	      + (grid[idx+X]  *t0 + grid[idx+X+Y]  *t1) * s1) * f0
+		  +((grid[idx+Z]  *t0 + grid[idx+Y+Z]  *t1) * s0
+		  + (grid[idx+X+Z]*t0 + grid[idx+X+Y+Z]*t1) * s1) * f1;
+}
+
+float MACGrid_getInterpolatedY(MACGrid_t grid, GridPosition_t pos, GridSize_t size)
+{
+	float px=pos.x-0.5, py=pos.y-0.5, pz=pos.z-0.5;
+    int xi = (int)px;
+    int yi = (int)py;
+    int zi = (int)pz;
+    float s1 = px-(float)xi, s0 = 1.-s1;
+    float t1 = py-(float)yi, t0 = 1.-t1;
+    float f1 = pz-(float)zi, f0 = 1.-f1;
+    /* clamp to border */
+    if (px < 0.) { xi = 0; s0 = 1.0; s1 = 0.0; }
+    if (py < 0.) { yi = 0; t0 = 1.0; t1 = 0.0; }
+    if (pz < 0.) { zi = 0; f0 = 1.0; f1 = 0.0; }
+    if (xi >= size.x-1) { xi = size.x-2; s0 = 0.0; s1 = 1.0; }
+    if (yi >= size.y-1) { yi = size.y-2; t0 = 0.0; t1 = 1.0; }
+    if (size.z>1) { if (zi >= size.z-1) { zi = size.z-2; f0 = 0.0; f1 = 1.0; } }
+	int X = 1;
+	int Y = size.x;
+	int Z = Y*(size.y+1);
+	int idx = xi + Y*yi + Z*zi + (size.x+1)*size.y*size.z;
+	return ((grid[idx]    *t0 + grid[idx+Y]    *t1) * s0
+	      + (grid[idx+X]  *t0 + grid[idx+X+Y]  *t1) * s1) * f0
+		  +((grid[idx+Z]  *t0 + grid[idx+Y+Z]  *t1) * s0
+		  + (grid[idx+X+Z]*t0 + grid[idx+X+Y+Z]*t1) * s1) * f1;
+}
+
+float MACGrid_getInterpolatedZ(MACGrid_t grid, GridPosition_t pos, GridSize_t size)
+{
+	float px=pos.x-0.5, py=pos.y-0.5, pz=pos.z-0.5;
+    int xi = (int)px;
+    int yi = (int)py;
+    int zi = (int)pz;
+    float s1 = px-(float)xi, s0 = 1.-s1;
+    float t1 = py-(float)yi, t0 = 1.-t1;
+    float f1 = pz-(float)zi, f0 = 1.-f1;
+    /* clamp to border */
+    if (px < 0.) { xi = 0; s0 = 1.0; s1 = 0.0; }
+    if (py < 0.) { yi = 0; t0 = 1.0; t1 = 0.0; }
+    if (pz < 0.) { zi = 0; f0 = 1.0; f1 = 0.0; }
+    if (xi >= size.x-1) { xi = size.x-2; s0 = 0.0; s1 = 1.0; }
+    if (yi >= size.y-1) { yi = size.y-2; t0 = 0.0; t1 = 1.0; }
+    if (size.z>1) { if (zi >= size.z-1) { zi = size.z-2; f0 = 0.0; f1 = 1.0; } }
+	int X = 1;
+	int Y = size.x;
+	int Z = Y*size.y;
+	int idx = xi + Y*yi + Z*zi + (size.x+1)*size.y*size.z + size.x*(size.y+1)*size.z;
+	return ((grid[idx]    *t0 + grid[idx+Y]    *t1) * s0
+	      + (grid[idx+X]  *t0 + grid[idx+X+Y]  *t1) * s1) * f0
+		  +((grid[idx+Z]  *t0 + grid[idx+Y+Z]  *t1) * s0
+		  + (grid[idx+X+Z]*t0 + grid[idx+X+Y+Z]*t1) * s1) * f1;
+}
+
+__global float* MACGrid_getPointerX(MACGrid_t grid, GridIndex_t index, GridSize_t size)
 {
 	int i = LSZ(index, (int3)(size.x+1, size.y, size.z));
 	return &grid[i];
 }
 
-__global float* MACGRid_getPointerY(MACGrid_t grid, GridIndex_t index, GridSize_t size)
+__global float* MACGrid_getPointerY(MACGrid_t grid, GridIndex_t index, GridSize_t size)
 {
 	int offset = (size.x+1) * size.y * size.z;
 	int i = LSZ(index, (int3)(size.x, size.y+1, size.z));
 	return &grid[i + offset];
 }
 
-__global float* MACGRid_getPointerZ(MACGrid_t grid, GridIndex_t index, GridSize_t size)
+__global float* MACGrid_getPointerZ(MACGrid_t grid, GridIndex_t index, GridSize_t size)
 {
 	int offset = (size.x+1) * size.y * size.z + size.x * (size.y+1) * size.z;
 	int i = LSZ(index, (int3)(size.x, size.y, size.z+1));

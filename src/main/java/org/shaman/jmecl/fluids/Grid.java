@@ -37,4 +37,10 @@ abstract class Grid {
 		return solver;
 	}
 
+	public void swap(Grid other) {
+		assert (this.getClass() == other.getClass());
+		Buffer tmp = this.buffer;
+		this.buffer = other.buffer;
+		other.buffer = tmp;
+	}
 }
