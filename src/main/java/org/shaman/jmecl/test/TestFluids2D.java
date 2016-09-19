@@ -6,6 +6,8 @@
 package org.shaman.jmecl.test;
 
 import com.jme3.app.SimpleApplication;
+import com.jme3.app.StatsAppState;
+import com.jme3.app.state.VideoRecorderAppState;
 import com.jme3.material.Material;
 import com.jme3.material.RenderState;
 import com.jme3.math.Vector3f;
@@ -15,6 +17,7 @@ import com.jme3.renderer.queue.RenderQueue;
 import com.jme3.scene.Geometry;
 import com.jme3.scene.shape.Quad;
 import com.jme3.system.AppSettings;
+import java.io.File;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.shaman.jmecl.OpenCLSettings;
@@ -27,6 +30,8 @@ import org.shaman.jmecl.utils.SharedTexture;
  * @author Sebastian Weiss
  */
 public class TestFluids2D extends SimpleApplication {
+	private static final boolean RECORDING = true;
+	private static final String RECORDING_PATH = "video/";
 
 	private FluidSolver solver;
 	private FlagGrid flags;
@@ -99,11 +104,31 @@ public class TestFluids2D extends SimpleApplication {
 		pressureProjection.setBoundary(flags);
 		pressureProjection.setMaxError(EquationSolver.ERROR_DONT_TEST);
 		pressureProjection.setMaxIterations(20000);
+		
+		if (RECORDING) {
+			File folder = new File(RECORDING_PATH);
+			if (!folder.exists()) {
+				folder.mkdir();
+			}
+			File file;
+			for (int i=1; ;++i) {
+				file = new File(folder, "Video"+i+".avi");
+				if (!file.exists()) {
+					break;
+				}
+			}
+			VideoRecorderAppState vras = new VideoRecorderAppState(file, 1.0f, 30);
+			stateManager.attach(vras);
+		}
 	}
 
 	@Override
 	public void simpleUpdate(float tpf) {
-		float timestep = 0.1f;
+		if (RECORDING && stateManager.getState(StatsAppState.class) != null) {
+			stateManager.getState(StatsAppState.class).setEnabled(false);
+		}
+		
+		float timestep = RECORDING ? tpf : 0.1f;
 		boundaryTools.applyDirichlet(density, boundaryFlags, FlagGrid.CellType.TypeInflow, 1.0f);
 
 		advection.advect(velocity, density, timestep, 1);
@@ -127,6 +152,10 @@ public class TestFluids2D extends SimpleApplication {
 ////		stop();
 //		System.out.println();
 //		System.out.println();
+
+		if (RECORDING) {
+			System.out.println(".");
+		}
 	}
 
 }
