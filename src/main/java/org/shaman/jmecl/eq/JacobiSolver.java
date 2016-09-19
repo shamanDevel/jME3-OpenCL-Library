@@ -103,18 +103,24 @@ public class JacobiSolver extends EquationSolver {
 				int b1 = i%2;
 				int b2 = (i+1)%2;
 				iteration2DKernel.Run1NoEvent(q, ws, bufs[b1], bufs[b2], bufB, bufA, resolutionX, resolutionY, bufRes);
-				reduceResult = blas.reduce(bufRes, CLBlas.PreReduceOp.SQUARE, CLBlas.ReduceOp.ADD, reduceResult);
-				residuum = blas.getReduceResultBlocking(reduceResult);
-				if (residuum < maxError) {
-					i++;
-					break;
+				if (maxError > 0 || (i==maxIteration-1 && maxError==ERROR_ONLY_TEST_AT_THE_END)) {
+					reduceResult = blas.reduce(bufRes, CLBlas.PreReduceOp.SQUARE, CLBlas.ReduceOp.ADD, reduceResult);
+					residuum = blas.getReduceResultBlocking(reduceResult);
+					if (residuum < maxError) {
+						i++;
+						break;
+					}
+					if (maxError>0) {
+						LOG.log(Level.FINE, "Iteration {0}: residium={1}", new Object[]{i, residuum});
+					}
 				}
-				LOG.log(Level.FINE, "Iteration {0}: residium={1}", new Object[]{i, residuum});
 			}
 			if (i%2 == 1) {
 				bufs[1].copyToAsync(q, bufs[0]).release();
 			}
-			LOG.log(Level.INFO, "solved after {0} iterations with an error of {1}", new Object[]{i, residuum});
+			if (maxError>0 || maxError==ERROR_ONLY_TEST_AT_THE_END) {
+				LOG.log(Level.INFO, "solved after {0} iterations with an error of {1}", new Object[]{i, residuum});
+			}
 		} else {
 			int i;
 			float residuum = 0;
@@ -125,18 +131,24 @@ public class JacobiSolver extends EquationSolver {
 				int b1 = i%2;
 				int b2 = (i+1)%2;
 				iteration3DKernel.Run1NoEvent(q, ws, bufs[b1], bufs[b2], bufB, bufA, resolutionX, resolutionY, resolutionZ, bufRes);
-				reduceResult = blas.reduce(bufRes, CLBlas.PreReduceOp.SQUARE, CLBlas.ReduceOp.ADD, reduceResult);
-				residuum = blas.getReduceResultBlocking(reduceResult);
-				if (residuum < maxError) {
-					i++;
-					break;
+				if (maxError > 0 || (i==maxIteration-1 && maxError==ERROR_ONLY_TEST_AT_THE_END)) {
+					reduceResult = blas.reduce(bufRes, CLBlas.PreReduceOp.SQUARE, CLBlas.ReduceOp.ADD, reduceResult);
+					residuum = blas.getReduceResultBlocking(reduceResult);
+					if (residuum < maxError) {
+						i++;
+						break;
+					}
+					if (maxError>0) {
+						LOG.log(Level.FINE, "Iteration {0}: residium={1}", new Object[]{i, residuum});
+					}
 				}
-				LOG.log(Level.FINE, "Iteration {0}: residium={1}", new Object[]{i, residuum});
 			}
 			if (i%2 == 1) {
 				bufs[1].copyToAsync(q, bufs[0]).release();
 			}
-			LOG.log(Level.INFO, "solved after {0} iterations with an error of {1}", new Object[]{i, residuum});
+			if (maxError>0 || maxError==ERROR_ONLY_TEST_AT_THE_END) {
+				LOG.log(Level.INFO, "solved after {0} iterations with an error of {1}", new Object[]{i, residuum});
+			}
 		}
 	}
 	

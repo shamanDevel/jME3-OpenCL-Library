@@ -44,6 +44,7 @@ public class PressureProjection {
 		}
 		this.solver = solver;
 		this.equationSolver = equationSolver;
+		equationSolver.setXToZero();
 		needsUpdate = true;
 		
 		String cacheID = PressureProjection.class.getName();
@@ -147,15 +148,18 @@ public class PressureProjection {
 		CommandQueue cq = solver.clSettings.getClCommandQueue();
 		if (solver.is2D()) {
 			Kernel.WorkSize ws = new Kernel.WorkSize(solver.resolutionX * solver.resolutionY);
+			
 			//setup right hand side
 			MakeRhs2DKernel.Run1NoEvent(cq, ws, flagGrid.buffer, equationSolver.getBBuffer(), velocities.buffer, solver.resolutionX, solver.resolutionY);
 //			System.out.println("Divergence:");
 //			new DebugTools(solver).printGrid2D(new RealGrid(solver, equationSolver.getBBuffer()));
+
 			//solve
-			equationSolver.setXToZero();
+//			equationSolver.setXToZero();
 			equationSolver.solve(maxIterations, maxError);
 //			System.out.println("Pressure:");
 //			new DebugTools(solver).printGrid2D(new RealGrid(solver, equationSolver.getXBuffer()));
+
 			//correct the velocities
 			CorrectVelocity2DKernel.Run1NoEvent(cq, ws, flagGrid.buffer, velocities.buffer, equationSolver.getXBuffer(), solver.resolutionX, solver.resolutionY);
 		}

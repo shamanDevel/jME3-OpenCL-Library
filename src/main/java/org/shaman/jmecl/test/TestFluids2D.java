@@ -18,6 +18,7 @@ import com.jme3.system.AppSettings;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.shaman.jmecl.OpenCLSettings;
+import org.shaman.jmecl.eq.EquationSolver;
 import org.shaman.jmecl.fluids.*;
 import org.shaman.jmecl.utils.SharedTexture;
 
@@ -96,8 +97,8 @@ public class TestFluids2D extends SimpleApplication {
 		
 		pressureProjection = new PressureProjection(solver);
 		pressureProjection.setBoundary(flags);
-		pressureProjection.setMaxError(1e-5f);
-		pressureProjection.setMaxIterations(10000);
+		pressureProjection.setMaxError(EquationSolver.ERROR_DONT_TEST);
+		pressureProjection.setMaxIterations(20000);
 	}
 
 	@Override
@@ -118,14 +119,14 @@ public class TestFluids2D extends SimpleApplication {
 		
 		debugTools.fillTextureWithDensity2D(density, densityTexture);
 		
-		try {
-			Thread.sleep(100);
-		} catch (InterruptedException ex) {
-			Logger.getLogger(TestFluids2D.class.getName()).log(Level.SEVERE, null, ex);
-		}
-//		stop();
-		System.out.println();
-		System.out.println();
+//		try {
+//			Thread.sleep(100);
+//		} catch (InterruptedException ex) {
+//			Logger.getLogger(TestFluids2D.class.getName()).log(Level.SEVERE, null, ex);
+//		}
+////		stop();
+//		System.out.println();
+//		System.out.println();
 	}
 
 }

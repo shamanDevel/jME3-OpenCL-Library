@@ -176,12 +176,30 @@ public abstract class EquationSolver {
 	public void assembleMatrix() {}
 	
 	/**
+	 * Special parameter as {@code maxError} to {@link #solve(int, float) }
+	 * indicating that the l2-norm of the residuum should not be computed.
+	 * Therefore, no memcopies from the GPU to the CPU are required per iteration,
+	 * but the solver will use the full {@code maxIteration} iterations.
+	 */
+	public static float ERROR_DONT_TEST = -1;
+	
+	/**
+	 * Special parameter as {@code maxError} to {@link #solve(int, float) }
+	 * indicating that the l2-norm of the residuum should only be computed at the
+	 * end for logging purposes.
+	 * Therefore, no memcopies from the GPU to the CPU are required per iteration,
+	 * but the solver will use the full {@code maxIteration} iterations.
+	 */
+	public static float ERROR_ONLY_TEST_AT_THE_END = -2;
+	
+	/**
 	 * Solves the linear system.
 	 * Two termination criteria are available: either the solver reaches
 	 * the specified maximal number of iterations, or the L2-norm of the residuum
 	 * falls below the specified maximal error.
 	 * @param maxIteration the maximal number of iterations
-	 * @param maxError the maximal error of the residuum.
+	 * @param maxError the maximal error of the residuum,
+	 *	or one of the constants {@link #ERROR_DONT_TEST} and {@link #ERROR_ONLY_TEST_AT_THE_END}
 	 */
 	public abstract void solve(int maxIteration, float maxError);
 }
