@@ -42,7 +42,7 @@ public class BoundaryTools {
 	 * @param origin the origin of the box, 2 coordinates if 2D, 3 if 3D mode
 	 * @param size the size of the box, 2 coordinates if 2D, 3 if 3D mode
 	 */
-	public void setFlagsInRect(FlagGrid flags, FlagGrid.CellType type, int[] origin, int[] size)
+	public void setFlagsInRect(FlagGrid flags, int type, int[] origin, int[] size)
 	{
 		if (solver.is2D()) {
 			if (origin.length != 2 || size.length != 2) {
@@ -50,7 +50,7 @@ public class BoundaryTools {
 			}
 			Kernel.WorkSize ws = new Kernel.WorkSize(size[0] * size[1]);
 			setFlagsRect2DKernel.Run1NoEvent(solver.clSettings.getClCommandQueue(), ws, 
-					flags.getBuffer(), type.value, origin[0], origin[1], size[0], size[1], 
+					flags.getBuffer(), type, origin[0], origin[1], size[0], size[1], 
 					solver.getResolutionX(), solver.getResolutionY());
 		}
 	}

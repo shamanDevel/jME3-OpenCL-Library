@@ -19,6 +19,6 @@ __kernel void ApplyDirichlet2D(RealGrid_t target, FlagGrid_t flags, int flag, fl
 	GridSize_t dim = (int3)(sizeX, sizeY, 1);
 	GridIndex_t pos;
 	L_INVSZ(idx, pos, dim);
-	if (FlagGrid_get(flags, pos, dim) != flag) return;
-	RealGrid_set(target, pos, dim, value);
+	if (FlagGrid_get(flags, pos, dim) & flag)
+		RealGrid_set(target, pos, dim, value);
 }

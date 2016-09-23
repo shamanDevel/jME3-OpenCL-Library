@@ -30,12 +30,15 @@ import org.shaman.jmecl.utils.SharedTexture;
  * @author Sebastian Weiss
  */
 public class TestFluids2D extends SimpleApplication {
-	private static final boolean RECORDING = true;
+	private static final boolean RECORDING = false;
 	private static final String RECORDING_PATH = "video/";
 
+	private Context clContext;
+	private CommandQueue clCommandQueue;
+	private OpenCLSettings clSettings;
+	
 	private FluidSolver solver;
 	private FlagGrid flags;
-	private FlagGrid boundaryFlags;
 	private RealGrid density;
 	private MACGrid velocity;
 	private SharedTexture densityTexture;
@@ -63,17 +66,15 @@ public class TestFluids2D extends SimpleApplication {
 
 	@Override
 	public void simpleInitApp() {
-		Context clContext = context.getOpenCLContext();
-		CommandQueue clCommandQueue = clContext.createQueue();
-		OpenCLSettings clSettings = new OpenCLSettings(clContext, clCommandQueue, null, assetManager);
+		clContext = context.getOpenCLContext();
+		clCommandQueue = clContext.createQueue();
+		clSettings = new OpenCLSettings(clContext, clCommandQueue, null, assetManager);
 		
 		int resolutionX = 256;
 		int resolutionY = 256;
 		solver = new FluidSolver(clSettings, resolutionX, resolutionY);
 		flags = solver.createFlagGrid();
 		flags.fill(FlagGrid.CellType.TypeFluid);
-		boundaryFlags = solver.createFlagGrid();
-		boundaryFlags.fill(FlagGrid.CellType.TypeEmpty);
 		density = solver.createRealGrid();
 		density.fill(0);
 		velocity = solver.createMACGrid();
@@ -94,7 +95,14 @@ public class TestFluids2D extends SimpleApplication {
 		guiNode.attachChild(densityTextureGeom);
 		
 		boundaryTools = new BoundaryTools(solver);
-		boundaryTools.setFlagsInRect(boundaryFlags, FlagGrid.CellType.TypeInflow, new int[]{resolutionX/2-resolutionX/8, resolutionY/16}, new int[]{resolutionX/4, resolutionY/8});
+		boundaryTools.setFlagsInRect(flags, FlagGrid.CellType.TypeObstacle.value, new int[]{0,0}, new int[]{2, resolutionY});
+		boundaryTools.setFlagsInRect(flags, FlagGrid.CellType.TypeObstacle.value, new int[]{resolutionX-2,0}, new int[]{2, resolutionY});
+		boundaryTools.setFlagsInRect(flags, FlagGrid.CellType.TypeObstacle.value, new int[]{0,resolutionY-2}, new int[]{resolutionX, 2});
+		boundaryTools.setFlagsInRect(flags, FlagGrid.CellType.TypeOutflow.value, new int[]{0,0}, new int[]{resolutionX, 2});
+		boundaryTools.setFlagsInRect(flags, FlagGrid.CellType.TypeInflow.value | FlagGrid.CellType.TypeFluid.value,
+				new int[]{resolutionX/2-resolutionX/8, resolutionY/16}, new int[]{resolutionX/4, resolutionY/8});
+		boundaryTools.setFlagsInRect(flags, FlagGrid.CellType.TypeObstacle.value, new int[]{resolutionX/2-resolutionX/8, resolutionY/2}, new int[]{resolutionX/4, resolutionY/8});
+		
 		
 		buoyancy = new Buoyancy(solver);
 		gravity = new Vector3f(0, -9.81f, 0);
@@ -102,8 +110,8 @@ public class TestFluids2D extends SimpleApplication {
 		
 		pressureProjection = new PressureProjection(solver);
 		pressureProjection.setBoundary(flags);
-		pressureProjection.setMaxError(EquationSolver.ERROR_DONT_TEST);
-		pressureProjection.setMaxIterations(20000);
+		pressureProjection.setMaxError(EquationSolver.ERROR_ONLY_TEST_AT_THE_END);
+		pressureProjection.setMaxIterations(2000);
 		
 		if (RECORDING) {
 			File folder = new File(RECORDING_PATH);
@@ -129,7 +137,7 @@ public class TestFluids2D extends SimpleApplication {
 		}
 		
 		float timestep = RECORDING ? tpf : 0.1f;
-		boundaryTools.applyDirichlet(density, boundaryFlags, FlagGrid.CellType.TypeInflow, 1.0f);
+		boundaryTools.applyDirichlet(density, flags, FlagGrid.CellType.TypeInflow, 1.0f);
 
 		advection.advect(velocity, density, timestep, 1);
 		advection.advect(velocity, velocity, timestep, 1);
@@ -141,15 +149,18 @@ public class TestFluids2D extends SimpleApplication {
 		pressureProjection.project(velocity);
 //		System.out.println("Post-Pressure");
 //		debugTools.printGrid2D(velocity);
+//		pressureProjection.debugPrintDivergence(velocity);
 		
+		clCommandQueue.finish();
 		debugTools.fillTextureWithDensity2D(density, densityTexture);
+		clCommandQueue.finish();
 		
 //		try {
 //			Thread.sleep(100);
 //		} catch (InterruptedException ex) {
 //			Logger.getLogger(TestFluids2D.class.getName()).log(Level.SEVERE, null, ex);
 //		}
-////		stop();
+//		stop();
 //		System.out.println();
 //		System.out.println();
 

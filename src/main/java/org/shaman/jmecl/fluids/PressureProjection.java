@@ -17,6 +17,7 @@ import org.shaman.jmecl.eq.JacobiSolver;
  */
 public class PressureProjection {
 	private static final String SOURCE_FILE = "org/shaman/jmecl/fluids/PressureProjection.cl";
+	private static final boolean DEBUG = false;
 	
 	protected final FluidSolver solver;
 	protected final EquationSolver equationSolver;
@@ -24,16 +25,14 @@ public class PressureProjection {
 	protected final Kernel MakeRhs2DKernel;
 	protected final Kernel MakeLaplaceMatrix2DKernel;
 	protected final Kernel CorrectVelocity2DKernel;
-	protected final RealGrid A0;
-	protected final RealGrid Ai;
-	protected final RealGrid Aj;
-	protected final RealGrid Ak;
 	
 	protected boolean needsUpdate;
 	protected FlagGrid flagGrid;
 	protected boolean preciseBoundaries;
 	protected int maxIterations;
 	protected float maxError;
+	
+	protected DebugTools debugTools;
 
 	public PressureProjection(FluidSolver solver, EquationSolver equationSolver) {
 		if (equationSolver.getResolutionX() != solver.getResolutionX()
@@ -59,10 +58,9 @@ public class PressureProjection {
 		MakeLaplaceMatrix2DKernel = program.createKernel("MakeLaplaceMatrix2D");
 		CorrectVelocity2DKernel = program.createKernel("CorrectVelocity2D");
 		
-		A0 = solver.createRealGrid();
-		Ai = solver.createRealGrid();
-		Aj = solver.createRealGrid();
-		Ak = (solver.is2D()) ? null : solver.createRealGrid();
+		if (DEBUG) {
+			debugTools = new DebugTools(solver);
+		}
 	}
 	
 	protected static EquationSolver createEquationSolver(FluidSolver solver) {
@@ -117,30 +115,63 @@ public class PressureProjection {
 		}
 		//assemble matrix
 		CommandQueue cq = solver.clSettings.getClCommandQueue();
+		RealGrid A0 = solver.createRealGrid();
+		RealGrid Ain = solver.createRealGrid();
+		RealGrid Ajn = solver.createRealGrid();
+		RealGrid Aip = solver.createRealGrid();
+		RealGrid Ajp = solver.createRealGrid();
 		A0.fill(0);
-		Ai.fill(0);
-		Aj.fill(0);
+		Ain.fill(0);
+		Ajn.fill(0);
+		Aip.fill(0);
+		Ajp.fill(0);
 		if (solver.is2D()) {
 			Kernel.WorkSize ws = new Kernel.WorkSize(solver.resolutionX * solver.resolutionY);
-			MakeLaplaceMatrix2DKernel.Run1NoEvent(cq, ws, flagGrid.buffer, A0.buffer, Ai.buffer, Aj.buffer, solver.resolutionX, solver.resolutionY);
+			MakeLaplaceMatrix2DKernel.Run1NoEvent(cq, ws, flagGrid.buffer, A0.buffer, Ain.buffer, Aip.buffer, Ajn.buffer, Ajp.buffer, solver.resolutionX, solver.resolutionY);
 			equationSolver.setA(A0.getBuffer(), 0, 0, 0);
-			equationSolver.setA(Ai.getBuffer(), -1, 0, 0);
-			equationSolver.setA(Ai.getBuffer(), 1, 0, 0);
-			equationSolver.setA(Aj.getBuffer(), 0, -1, 0);
-			equationSolver.setA(Aj.getBuffer(), 0, 1, 0);
+			equationSolver.setA(Ain.getBuffer(), -1, 0, 0);
+			equationSolver.setA(Aip.getBuffer(), 1, 0, 0);
+			equationSolver.setA(Ajn.getBuffer(), 0, -1, 0);
+			equationSolver.setA(Ajp.getBuffer(), 0, 1, 0);
 			
-//			System.out.println("A0:");
-//			new DebugTools(solver).printGrid2D(A0);
-//			System.out.println("Ai:");
-//			new DebugTools(solver).printGrid2D(Ai);
-//			System.out.println("Aj:");
-//			new DebugTools(solver).printGrid2D(Aj);
+			if (DEBUG) {
+				System.out.println("A (0,0,0):");
+				debugTools.printGrid2D(A0);
+				System.out.println("A (-1,0,0):");
+				debugTools.printGrid2D(Ain);
+				System.out.println("A (+1,0,0):");
+				debugTools.printGrid2D(Aip);
+				System.out.println("A (0,-1,0):");
+				debugTools.printGrid2D(Ajn);
+				System.out.println("A (0,+1,0):");
+				debugTools.printGrid2D(Ajp);
+			}
 			
 		} else {
+			RealGrid Ak = solver.createRealGrid();
 			Ak.fill(0);
 			//TODO
+			
+			Ak.buffer.release();
 		}
 		equationSolver.assembleMatrix();
+		A0.buffer.release();
+		Ain.buffer.release();
+		Ajn.buffer.release();
+		Aip.buffer.release();
+		Ajp.buffer.release();
+	}
+	
+	public void debugPrintDivergence(MACGrid velocities) {
+		CommandQueue cq = solver.clSettings.getClCommandQueue();
+		if (solver.is2D()) {
+			Kernel.WorkSize ws = new Kernel.WorkSize(solver.resolutionX * solver.resolutionY);
+			
+			//setup right hand side
+			MakeRhs2DKernel.Run1NoEvent(cq, ws, flagGrid.buffer, equationSolver.getBBuffer(), velocities.buffer, solver.resolutionX, solver.resolutionY);
+			System.out.println("Divergence:");
+			new DebugTools(solver).printGrid2D(new RealGrid(solver, equationSolver.getBBuffer()));
+		}
 	}
 	
 	public void project(MACGrid velocities) {
@@ -149,16 +180,25 @@ public class PressureProjection {
 		if (solver.is2D()) {
 			Kernel.WorkSize ws = new Kernel.WorkSize(solver.resolutionX * solver.resolutionY);
 			
+			if (DEBUG) {
+				System.out.println("Velocities:");
+				debugTools.printGrid2D(velocities);
+			}
+			
 			//setup right hand side
 			MakeRhs2DKernel.Run1NoEvent(cq, ws, flagGrid.buffer, equationSolver.getBBuffer(), velocities.buffer, solver.resolutionX, solver.resolutionY);
-//			System.out.println("Divergence:");
-//			new DebugTools(solver).printGrid2D(new RealGrid(solver, equationSolver.getBBuffer()));
+			if (DEBUG) {
+				System.out.println("Divergence:");
+				debugTools.printGrid2D(new RealGrid(solver, equationSolver.getBBuffer()));
+			}
 
 			//solve
-//			equationSolver.setXToZero();
+			equationSolver.setXToZero();
 			equationSolver.solve(maxIterations, maxError);
-//			System.out.println("Pressure:");
-//			new DebugTools(solver).printGrid2D(new RealGrid(solver, equationSolver.getXBuffer()));
+			if (DEBUG) {
+				System.out.println("Pressure:");
+				debugTools.printGrid2D(new RealGrid(solver, equationSolver.getXBuffer()));
+			}
 
 			//correct the velocities
 			CorrectVelocity2DKernel.Run1NoEvent(cq, ws, flagGrid.buffer, velocities.buffer, equationSolver.getXBuffer(), solver.resolutionX, solver.resolutionY);

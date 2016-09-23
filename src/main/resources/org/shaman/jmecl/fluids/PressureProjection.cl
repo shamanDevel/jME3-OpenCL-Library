@@ -20,10 +20,11 @@ __kernel void MakeRhs2D(FlagGrid_t flags, RealGrid_t rhs, MACGrid_t vel, int siz
 	rhs[idx] = set;
 }
 
-__kernel void MakeLaplaceMatrix2D(FlagGrid_t flags, RealGrid_t A0, RealGrid_t Ai, RealGrid_t Aj, int sizeX, int sizeY)
+__kernel void MakeLaplaceMatrix2D(FlagGrid_t flags, RealGrid_t A0, RealGrid_t Ain, RealGrid_t Aip, RealGrid_t Ajn, RealGrid_t Ajp, int sizeX, int sizeY)
 {
 	int idx = get_global_id(0);
 	if ((flags[idx] & CellType_Fluid) == 0) {
+		A0[idx] = 1;
 		return;
 	}
 
@@ -40,8 +41,10 @@ __kernel void MakeLaplaceMatrix2D(FlagGrid_t flags, RealGrid_t A0, RealGrid_t Ai
 	A0[idx] = a0;
 
 	//off-diagonals
-	if (pos.x>0 && (FlagGrid_get(flags, pos-(int3)(1,0,0), dim) & CellType_Fluid)) Ai[idx] = -1;
-	if (pos.y>0 && (FlagGrid_get(flags, pos-(int3)(0,1,0), dim) & CellType_Fluid)) Aj[idx] = -1;
+	if (pos.x>0 && (FlagGrid_get(flags, pos-(int3)(1,0,0), dim) & CellType_Fluid)) Ain[idx] = -1;
+	if (pos.y>0 && (FlagGrid_get(flags, pos-(int3)(0,1,0), dim) & CellType_Fluid)) Ajn[idx] = -1;
+	if (pos.x<sizeX-1 && (FlagGrid_get(flags, pos+(int3)(1,0,0), dim) & CellType_Fluid)) Aip[idx] = -1;
+	if (pos.y<sizeY-1 && (FlagGrid_get(flags, pos+(int3)(0,1,0), dim) & CellType_Fluid)) Ajp[idx] = -1;
 }
 
 __kernel void CorrectVelocity2D(FlagGrid_t flags, MACGrid_t vel, RealGrid_t pressure, int sizeX, int sizeY)
