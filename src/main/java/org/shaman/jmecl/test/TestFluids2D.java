@@ -23,6 +23,8 @@ import java.util.logging.Logger;
 import org.shaman.jmecl.OpenCLSettings;
 import org.shaman.jmecl.eq.EquationSolver;
 import org.shaman.jmecl.fluids.*;
+import org.shaman.jmecl.utils.DebugContextFactory;
+import org.shaman.jmecl.utils.LoggingContextFactory;
 import org.shaman.jmecl.utils.SharedTexture;
 
 /**
@@ -32,6 +34,8 @@ import org.shaman.jmecl.utils.SharedTexture;
 public class TestFluids2D extends SimpleApplication {
 	private static final boolean RECORDING = false;
 	private static final String RECORDING_PATH = "video/";
+	private static final boolean DEBUG_CONTEXT = true;
+	private static final boolean LOGGING_CONTEXT = true;
 
 	private Context clContext;
 	private CommandQueue clCommandQueue;
@@ -67,11 +71,17 @@ public class TestFluids2D extends SimpleApplication {
 	@Override
 	public void simpleInitApp() {
 		clContext = context.getOpenCLContext();
+		if (DEBUG_CONTEXT) {
+			clContext = DebugContextFactory.createDebugContext(clContext);
+		}
+		if (LOGGING_CONTEXT) {
+			clContext = LoggingContextFactory.createLoggingContext(clContext);
+		}
 		clCommandQueue = clContext.createQueue();
 		clSettings = new OpenCLSettings(clContext, clCommandQueue, null, assetManager);
 		
-		int resolutionX = 256;
-		int resolutionY = 256;
+		int resolutionX = 510;
+		int resolutionY = 520;
 		solver = new FluidSolver(clSettings, resolutionX, resolutionY);
 		flags = solver.createFlagGrid();
 		flags.fill(FlagGrid.CellType.TypeFluid);
@@ -111,7 +121,7 @@ public class TestFluids2D extends SimpleApplication {
 		pressureProjection = new PressureProjection(solver);
 		pressureProjection.setBoundary(flags);
 		pressureProjection.setMaxError(EquationSolver.ERROR_ONLY_TEST_AT_THE_END);
-		pressureProjection.setMaxIterations(2000);
+		pressureProjection.setMaxIterations(2);
 		
 		if (RECORDING) {
 			File folder = new File(RECORDING_PATH);

@@ -604,7 +604,7 @@ public final class CLBlas<T extends Number> {
 		
 		kernelOp1.Run2NoEvent(clCommandQueue, new Kernel.WorkSize(globalWorkSize), new Kernel.WorkSize(workGroupSize), 
 					b, new Kernel.LocalMemPerElement(elementSize), (int) size, tmpMem, (int) offset, (int) step);
-                clCommandQueue.finish();
+//                clCommandQueue.finish();
 		
 		size = numWorkGroups;
 		while (size > 1) {
@@ -615,13 +615,13 @@ public final class CLBlas<T extends Number> {
 			
 			kernelOp2.Run2NoEvent(clCommandQueue, new Kernel.WorkSize(globalWorkSize), new Kernel.WorkSize(workGroupSize), 
 						tmpMem, new Kernel.LocalMemPerElement(elementSize), (int) size, tmpMem, (int) 0, (int) 1);
-                        clCommandQueue.finish();
+//                        clCommandQueue.finish();
 			
 			size = numWorkGroups;
 		}
 		
 		result.event = tmpMem.copyToAsync(clCommandQueue, result.result, elementSize).register();
-                clCommandQueue.finish();
+//                clCommandQueue.finish();
 		return result;
 	}
 	/**
@@ -693,7 +693,7 @@ public final class CLBlas<T extends Number> {
 		
 		kernelOp1.Run2NoEvent(clCommandQueue, new Kernel.WorkSize(globalWorkSize), new Kernel.WorkSize(workGroupSize), 
 					a, b, new Kernel.LocalMemPerElement(elementSize), (int) size, tmpMem, (int) offsetA, (int) stepA, (int) offsetB, (int) stepB);
-                clCommandQueue.finish();
+//                clCommandQueue.finish();
 		
 		size = numWorkGroups;
 		while (size > 1) {
@@ -704,13 +704,13 @@ public final class CLBlas<T extends Number> {
 			
 			kernelOp2.Run2NoEvent(clCommandQueue, new Kernel.WorkSize(globalWorkSize), new Kernel.WorkSize(workGroupSize), 
 						tmpMem, new Kernel.LocalMemPerElement(elementSize), (int) size, tmpMem, (int) 0, (int) 1);
-                        clCommandQueue.finish();
+//                        clCommandQueue.finish();
 			
 			size = numWorkGroups;
 		}
 		
 		result.event = tmpMem.copyToAsync(clCommandQueue, result.result, elementSize).register();
-                clCommandQueue.finish();
+//                clCommandQueue.finish();
 		return result;
 	}
 	/**
