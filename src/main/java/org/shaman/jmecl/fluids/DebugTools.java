@@ -5,13 +5,19 @@
  */
 package org.shaman.jmecl.fluids;
 
+import com.jme3.math.ColorRGBA;
+import com.jme3.opencl.Buffer;
 import com.jme3.opencl.CommandQueue;
+import com.jme3.opencl.Kernel;
 import com.jme3.opencl.MappingAccess;
 import com.jme3.opencl.MemoryAccess;
+import com.jme3.opencl.Program;
 import com.jme3.renderer.RenderManager;
 import com.jme3.texture.Image;
+import com.jme3.util.BufferUtils;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
+import java.util.EnumMap;
 import org.shaman.jmecl.utils.SharedTexture;
 
 /**
@@ -21,12 +27,16 @@ import org.shaman.jmecl.utils.SharedTexture;
 public class DebugTools {
 	
 	private final FluidSolver solver;
+	
+	private boolean flagCopyInitialized;
+	private Buffer flagColorsBuffer;
+	private Kernel flagCopyKernel;
 
 	public DebugTools(FluidSolver solver) {
 		this.solver = solver;
 	}
 	
-	public SharedTexture createDensityTexture(RenderManager renderManager) {
+	public SharedTexture createRealTexture2D(RenderManager renderManager) {
 		com.jme3.opencl.Image.ImageDescriptor descriptor = new com.jme3.opencl.Image.ImageDescriptor(
 				com.jme3.opencl.Image.ImageType.IMAGE_2D, solver.resolutionX, solver.resolutionY, 0, 0);
 		SharedTexture tex = new SharedTexture(descriptor, Image.Format.Luminance32F);
@@ -34,11 +44,79 @@ public class DebugTools {
 		return tex;
 	}
 	
-	public void fillTextureWithDensity2D(RealGrid density, SharedTexture texture) {
+	public void fillTextureWithDensity2D(RealGrid density, SharedTexture realTexture) {
 		CommandQueue cq = solver.clSettings.getClCommandQueue();
-		texture.getCLImage().acquireImageForSharingNoEvent(cq);
-		density.buffer.copyToImageAsync(cq, texture.getCLImage(), 0, new long[]{0,0,0}, new long[]{solver.resolutionX, solver.resolutionY,1}).release();
-		texture.getCLImage().releaseImageForSharingNoEvent(cq);
+		realTexture.getCLImage().acquireImageForSharingNoEvent(cq);
+		density.buffer.copyToImageAsync(cq, realTexture.getCLImage(), 0, new long[]{0,0,0}, new long[]{solver.resolutionX, solver.resolutionY,1}).release();
+		realTexture.getCLImage().releaseImageForSharingNoEvent(cq);
+	}
+	
+	public SharedTexture createFlagTexture2D(RenderManager renderManager) {
+		com.jme3.opencl.Image.ImageDescriptor descriptor = new com.jme3.opencl.Image.ImageDescriptor(
+				com.jme3.opencl.Image.ImageType.IMAGE_2D, solver.resolutionX, solver.resolutionY, 0, 0);
+		SharedTexture tex = new SharedTexture(descriptor, Image.Format.RGBA8);
+		tex.initialize(renderManager, solver.clSettings.getClContext(), MemoryAccess.READ_WRITE);
+		return tex;
+	}
+	
+	private void initFlagCopy() {
+		if (flagCopyInitialized) {
+			return;
+		}
+		
+		String cacheID = DebugTools.class.getName()+"_FlagCopy";
+		Program program = solver.clSettings.getProgramCache().loadFromCache(cacheID);
+		if (program == null) {
+			String source = 
+				"#define L_INVSZ(i, vi, sz)	(vi).y = i / (sz).x; (vi).x = (i - (vi).y*(sz).x);\n" +
+				"__kernel void CopyFlags(__global char* flagGrid, __global float4* colors, __write_only image2d_t image, int sizeX, int sizeY)\n" +
+				"{\n" +
+				"	int idx = get_global_id(0);\n" +
+				"	int2 dim = (int2)(sizeX, sizeY);\n" +
+				"	int2 pos;\n" +
+				"	L_INVSZ(idx, pos, dim);\n" +
+				"	char flag = flagGrid[idx];\n" +
+				"	float4 color = colors[flag];\n" +
+				"	write_imagef(image, pos, color);\n" +
+				"}";
+			program = solver.clSettings.getClContext().createProgramFromSourceCode(source);
+			program.build();
+			solver.clSettings.getProgramCache().saveToCache(cacheID, program);
+		}
+		program.register();
+		flagCopyKernel = program.createKernel("CopyFlags");
+		
+		ByteBuffer bb = BufferUtils.createByteBuffer(256*4*4);
+		FloatBuffer fb = bb.asFloatBuffer();
+		EnumMap<FlagGrid.CellType, ColorRGBA> flagColors = new EnumMap<>(FlagGrid.CellType.class);
+		flagColors.put(FlagGrid.CellType.TypeInflow, new ColorRGBA(0, 1, 0, 0.5f));
+		flagColors.put(FlagGrid.CellType.TypeOutflow, new ColorRGBA(0, 0, 1, 0.5f));
+		flagColors.put(FlagGrid.CellType.TypeObstacle, new ColorRGBA(1, 0, 0, 1));
+		for (int i=0; i<256; ++i) {
+			ColorRGBA col = new ColorRGBA(0, 0, 0, 0);
+			for (EnumMap.Entry<FlagGrid.CellType, ColorRGBA> e : flagColors.entrySet()) {
+				if ((i & e.getKey().value) != 0) {
+					ColorRGBA c = e.getValue();
+					float ac = c.a + (1-c.a)*col.a;
+					col.set((c.a*c.r + (1-c.a)*col.a*col.r)/ac, (c.a*c.g + (1-c.a)*col.a*col.g)/ac, (c.a*c.b + (1-c.a)*col.a*col.b)/ac, ac);
+				}
+			}
+			System.out.println("flag "+i+" ("+Integer.toBinaryString(i)+"): "+col);
+			fb.put(col.r).put(col.g).put(col.b).put(col.a);
+		}
+		flagColorsBuffer = solver.clSettings.getClContext().createBuffer(256*4*4);
+		flagColorsBuffer.write(solver.clSettings.getClCommandQueue(), bb);
+		
+		flagCopyInitialized = true;
+	}
+	
+	public void fillTextureWithFlags2D(FlagGrid flags, SharedTexture flagTexture) {
+		initFlagCopy();
+		CommandQueue cq = solver.clSettings.getClCommandQueue();
+		flagTexture.getCLImage().acquireImageForSharingNoEvent(cq);
+		Kernel.WorkSize ws = new Kernel.WorkSize(solver.resolutionX * solver.resolutionY);
+		flagCopyKernel.Run1NoEvent(cq, ws, flags.buffer, flagColorsBuffer, flagTexture.getCLImage(), solver.resolutionX, solver.resolutionY);
+		flagTexture.getCLImage().releaseImageForSharingNoEvent(cq);
 	}
 	
 	public void printGrid2D(RealGrid grid) {

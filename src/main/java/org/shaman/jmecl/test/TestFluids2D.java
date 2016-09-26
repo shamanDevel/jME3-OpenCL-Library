@@ -5,104 +5,66 @@
  */
 package org.shaman.jmecl.test;
 
-import com.jme3.app.SimpleApplication;
-import com.jme3.app.StatsAppState;
-import com.jme3.app.state.VideoRecorderAppState;
-import com.jme3.material.Material;
-import com.jme3.material.RenderState;
 import com.jme3.math.Vector3f;
-import com.jme3.opencl.CommandQueue;
-import com.jme3.opencl.Context;
-import com.jme3.renderer.queue.RenderQueue;
-import com.jme3.scene.Geometry;
-import com.jme3.scene.shape.Quad;
 import com.jme3.system.AppSettings;
-import java.io.File;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import org.shaman.jmecl.OpenCLSettings;
 import org.shaman.jmecl.eq.EquationSolver;
-import org.shaman.jmecl.fluids.*;
-import org.shaman.jmecl.utils.DebugContextFactory;
-import org.shaman.jmecl.utils.LoggingContextFactory;
-import org.shaman.jmecl.utils.SharedTexture;
+import org.shaman.jmecl.fluids.Advection;
+import org.shaman.jmecl.fluids.BoundaryTools;
+import org.shaman.jmecl.fluids.Buoyancy;
+import org.shaman.jmecl.fluids.FlagGrid;
+import org.shaman.jmecl.fluids.FluidSolver;
+import org.shaman.jmecl.fluids.MACGrid;
+import org.shaman.jmecl.fluids.PressureProjection;
+import org.shaman.jmecl.fluids.RealGrid;
 
 /**
  *
- * @author Sebastian Weiss
+ * @author Sebastian
  */
-public class TestFluids2D extends SimpleApplication {
-	private static final boolean RECORDING = false;
-	private static final String RECORDING_PATH = "video/";
-	private static final boolean DEBUG_CONTEXT = true;
-	private static final boolean LOGGING_CONTEXT = true;
-
-	private Context clContext;
-	private CommandQueue clCommandQueue;
-	private OpenCLSettings clSettings;
+public class TestFluids2D extends AbstractFluidTest2D {
 	
-	private FluidSolver solver;
 	private FlagGrid flags;
 	private RealGrid density;
 	private MACGrid velocity;
-	private SharedTexture densityTexture;
 	
-	private DebugTools debugTools;
 	private BoundaryTools boundaryTools;
 	private Buoyancy buoyancy;
 	private Vector3f gravity;
 	private Advection advection;
 	private PressureProjection pressureProjection;
 	
-	/**
-	 * @param args the command line arguments
-	 */
 	public static void main(String[] args) {
 		AppSettings settings = new AppSettings(true);
 		settings.setOpenCLSupport(true);
 		settings.setOpenCLPlatformChooser(UserPlatformChooser.class);
-		settings.setVSync(true);
+		settings.setVSync(false);
+		settings.setResolution(1024, 768);
 		TestFluids2D app = new TestFluids2D();
 		app.setSettings(settings);
 		app.setShowSettings(true);
 		app.start();
 	}
 
+	public TestFluids2D() {
+		setResolutionX(512);
+		setResolutionY(512);
+	}
+
 	@Override
-	public void simpleInitApp() {
-		clContext = context.getOpenCLContext();
-		if (DEBUG_CONTEXT) {
-			clContext = DebugContextFactory.createDebugContext(clContext);
-		}
-		if (LOGGING_CONTEXT) {
-			clContext = LoggingContextFactory.createLoggingContext(clContext);
-		}
-		clCommandQueue = clContext.createQueue();
-		clSettings = new OpenCLSettings(clContext, clCommandQueue, null, assetManager);
-		
-		int resolutionX = 510;
-		int resolutionY = 520;
-		solver = new FluidSolver(clSettings, resolutionX, resolutionY);
+	protected void initSolver(FluidSolver solver) {
 		flags = solver.createFlagGrid();
 		flags.fill(FlagGrid.CellType.TypeFluid);
 		density = solver.createRealGrid();
 		density.fill(0);
 		velocity = solver.createMACGrid();
 		velocity.fill(Vector3f.ZERO);
-//		velocity.fill(new Vector3f(0.6f, 1.5f, 0));
 		
-		debugTools = new DebugTools(solver);
-		densityTexture = debugTools.createDensityTexture(renderManager);
-		Geometry densityTextureGeom = new Geometry("density", new Quad(resolutionX, resolutionY));
-		Material densityTextureMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-		densityTextureMat.setTexture("ColorMap", densityTexture.getJMETexture());
-		//densityTextureMat.setTexture("ColorMap", assetManager.loadTexture("org/shaman/jmecl/test/singlesmoke.png"));
-		densityTextureMat.getAdditionalRenderState().setFaceCullMode(RenderState.FaceCullMode.Off);
-		densityTextureMat.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
-		densityTextureGeom.setMaterial(densityTextureMat);
-		densityTextureGeom.setLocalTranslation(150, 150, 0);
-		densityTextureGeom.setQueueBucket(RenderQueue.Bucket.Gui);
-		guiNode.attachChild(densityTextureGeom);
+		setSelectedRealGrid(addRealGrid(density, "Density"));
+		setSelectedFlagGrid(addFlagGrid(flags, "Flags"));
+		setSelectedMACGrid(addMACGrid(velocity, "Velocity"));
+		
+		int resolutionX = solver.getResolutionX();
+		int resolutionY = solver.getResolutionY();
 		
 		boundaryTools = new BoundaryTools(solver);
 		boundaryTools.setFlagsInRect(flags, FlagGrid.CellType.TypeObstacle.value, new int[]{0,0}, new int[]{2, resolutionY});
@@ -121,62 +83,20 @@ public class TestFluids2D extends SimpleApplication {
 		pressureProjection = new PressureProjection(solver);
 		pressureProjection.setBoundary(flags);
 		pressureProjection.setMaxError(EquationSolver.ERROR_ONLY_TEST_AT_THE_END);
-		pressureProjection.setMaxIterations(2);
-		
-		if (RECORDING) {
-			File folder = new File(RECORDING_PATH);
-			if (!folder.exists()) {
-				folder.mkdir();
-			}
-			File file;
-			for (int i=1; ;++i) {
-				file = new File(folder, "Video"+i+".avi");
-				if (!file.exists()) {
-					break;
-				}
-			}
-			VideoRecorderAppState vras = new VideoRecorderAppState(file, 1.0f, 30);
-			stateManager.attach(vras);
-		}
+		pressureProjection.setMaxIterations(2000);
 	}
 
 	@Override
-	public void simpleUpdate(float tpf) {
-		if (RECORDING && stateManager.getState(StatsAppState.class) != null) {
-			stateManager.getState(StatsAppState.class).setEnabled(false);
-		}
-		
-		float timestep = RECORDING ? tpf : 0.1f;
+	protected void updateSolver(float tpf) {
+		float timestep = tpf;
 		boundaryTools.applyDirichlet(density, flags, FlagGrid.CellType.TypeInflow, 1.0f);
 
 		advection.advect(velocity, density, timestep, 1);
 		advection.advect(velocity, velocity, timestep, 1);
 		
 		buoyancy.addBuoynacy(flags, density, velocity, gravity, timestep);
-		
-//		System.out.println("Pre-Pressure");
-//		debugTools.printGrid2D(velocity);
+
 		pressureProjection.project(velocity);
-//		System.out.println("Post-Pressure");
-//		debugTools.printGrid2D(velocity);
-//		pressureProjection.debugPrintDivergence(velocity);
-		
-		clCommandQueue.finish();
-		debugTools.fillTextureWithDensity2D(density, densityTexture);
-		clCommandQueue.finish();
-		
-//		try {
-//			Thread.sleep(100);
-//		} catch (InterruptedException ex) {
-//			Logger.getLogger(TestFluids2D.class.getName()).log(Level.SEVERE, null, ex);
-//		}
-//		stop();
-//		System.out.println();
-//		System.out.println();
-
-		if (RECORDING) {
-			System.out.println(".");
-		}
 	}
-
+	
 }

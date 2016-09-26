@@ -11,7 +11,7 @@ import com.jme3.opencl.Buffer;
  *
  * @author Sebastian
  */
-abstract class Grid {
+public abstract class Grid {
 	
 	protected Buffer buffer;
 	protected final FluidSolver solver;
