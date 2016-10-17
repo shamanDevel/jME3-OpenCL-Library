@@ -8,6 +8,9 @@ package org.shaman.jmecl.test;
 import com.jme3.app.SimpleApplication;
 import com.jme3.font.BitmapText;
 import com.jme3.font.Rectangle;
+import com.jme3.input.KeyInput;
+import com.jme3.input.controls.ActionListener;
+import com.jme3.input.controls.KeyTrigger;
 import com.jme3.material.Material;
 import com.jme3.material.RenderState;
 import com.jme3.math.ColorRGBA;
@@ -30,12 +33,16 @@ import org.shaman.jmecl.fluids.RealGrid;
 import org.shaman.jmecl.utils.DebugContextFactory;
 import org.shaman.jmecl.utils.LoggingContextFactory;
 import org.shaman.jmecl.utils.SharedTexture;
+import org.shaman.jmecl.utils.TransferFunctionEditor;
 
 /**
  *
  * @author Sebastian
  */
 public abstract class AbstractFluidTest2D extends SimpleApplication {
+	protected static final int X_OFFSET = 250;
+	private static final String KEY_PREFIX = "AFT2D_";
+	private static final String KEY_RUN = KEY_PREFIX+"Run";
 	
 	protected Context clContext;
 	protected CommandQueue clCommandQueue;
@@ -44,6 +51,7 @@ public abstract class AbstractFluidTest2D extends SimpleApplication {
 	private boolean debugContext;
 	private boolean loggingContext;
 	private boolean recording;
+	private boolean running;
 	
 	private boolean initialized;
 	private int resolutionX;
@@ -78,6 +86,7 @@ public abstract class AbstractFluidTest2D extends SimpleApplication {
 	private SharedTexture flagTexture;
 	private Material flagMaterial;
 	private Geometry flagGeometry;
+	private TransferFunctionEditor tfe;
 	
 	public AbstractFluidTest2D() {
 	}
@@ -151,9 +160,15 @@ public abstract class AbstractFluidTest2D extends SimpleApplication {
 		guiNode.attachChild(infoText);
 		
 		debugTools = new DebugTools(solver);
-		int offsetX = 250;
-		int size = Math.min(settings.getHeight() - 10, settings.getWidth() - offsetX - 5);
-		offsetX = settings.getWidth() - size - 5;
+		int size = Math.min(settings.getHeight() - 10, settings.getWidth() - X_OFFSET - 5);
+		int offsetX = settings.getWidth() - size - 5;
+		
+		tfe = new TransferFunctionEditor(true);
+		tfe.initialize(this);
+		Spatial tfeNode = tfe.getView();
+		guiNode.attachChild(tfeNode);
+		tfeNode.setLocalScale(X_OFFSET-10, 150, 1);
+		tfeNode.setLocalTranslation(5, 5, 0);
 		
 		Mesh boundsMesh = new Mesh();
 		boundsMesh.setBuffer(VertexBuffer.Type.Position, 3, new float[]{0,0,0, 1,0,0, 1,1,0, 0,1,0});
@@ -171,8 +186,9 @@ public abstract class AbstractFluidTest2D extends SimpleApplication {
 		
 		realTexture = debugTools.createRealTexture2D(renderManager);
 		realGeometry = new Geometry("realGrid", new Quad(1, 1));
-		realMaterial = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+		realMaterial = new Material(assetManager, "org/shaman/jmecl/test/ColorRamped.j3md");
 		realMaterial.setTexture("ColorMap", realTexture.getJMETexture());
+		realMaterial.setTexture("ColorRamp", tfe.getTextures()[0]);
 		realMaterial.getAdditionalRenderState().setFaceCullMode(RenderState.FaceCullMode.Off);
 		realMaterial.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
 		realGeometry.setMaterial(realMaterial);
@@ -182,7 +198,7 @@ public abstract class AbstractFluidTest2D extends SimpleApplication {
 		guiNode.attachChild(realGeometry);
 		
 		flagTexture = debugTools.createFlagTexture2D(renderManager);
-		flagGeometry = new Geometry("realGrid", new Quad(1, 1));
+		flagGeometry = new Geometry("flagGrid", new Quad(1, 1));
 		flagMaterial = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
 		flagMaterial.setTexture("ColorMap", flagTexture.getJMETexture());
 		flagMaterial.getAdditionalRenderState().setFaceCullMode(RenderState.FaceCullMode.Off);
@@ -192,6 +208,10 @@ public abstract class AbstractFluidTest2D extends SimpleApplication {
 		flagGeometry.setLocalScale(size);
 		flagGeometry.setQueueBucket(RenderQueue.Bucket.Gui);
 		guiNode.attachChild(flagGeometry);
+		
+		inputManager.setCursorVisible(true);
+		inputManager.addMapping(KEY_RUN, new KeyTrigger(KeyInput.KEY_R));
+		inputManager.addListener(new KeyListener(), KEY_RUN);
 	}
 	
 	protected abstract void initSolver(FluidSolver solver);
@@ -297,13 +317,17 @@ public abstract class AbstractFluidTest2D extends SimpleApplication {
 
 	@Override
 	public final void simpleUpdate(float tpf) {
-		updateSolver(tpf);
+		if (running) {
+			updateSolver(tpf);
+		}
+		inputManager.setCursorVisible(true); //a hack
 		
 		if (updateText) {
 			updateText = false;
 			StringBuilder str = new StringBuilder();
 			str.append("Screenshot: F12\n");
-			str.append("Recording: F11  ").append(recording ? "on" : "off");
+			str.append("Recording: F11  ").append(recording ? "on" : "off").append('\n');
+			str.append("Running: R  ").append(running);
 			str.append("\n\n");
 			str.append("Real Grid  (Num1,2-3):\n");
 			str.append("  ").append(realGridSelection==-1 ? "off" : realGrids.get(realGridSelection).name).append('\n');
@@ -335,4 +359,16 @@ public abstract class AbstractFluidTest2D extends SimpleApplication {
 	}
 	
 	protected abstract void updateSolver(float tpf);
+	
+	private class KeyListener implements ActionListener {
+
+		@Override
+		public void onAction(String string, boolean bln, float f) {
+			if (KEY_RUN.equals(string) && bln) {
+				running = !running;
+				updateText = true;
+			}
+		}
+		
+	}
 }

@@ -6,6 +6,7 @@
 package org.shaman.jmecl.test;
 
 import com.jme3.math.Vector3f;
+import com.jme3.scene.Spatial;
 import com.jme3.system.AppSettings;
 import org.shaman.jmecl.eq.EquationSolver;
 import org.shaman.jmecl.fluids.Advection;
@@ -16,6 +17,7 @@ import org.shaman.jmecl.fluids.FluidSolver;
 import org.shaman.jmecl.fluids.MACGrid;
 import org.shaman.jmecl.fluids.PressureProjection;
 import org.shaman.jmecl.fluids.RealGrid;
+import org.shaman.jmecl.utils.TransferFunctionEditor;
 
 /**
  *
