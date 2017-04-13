@@ -37,6 +37,7 @@ public class TestParticles extends SimpleApplication {
 		settings.setOpenCLSupport(true);
 		settings.setOpenCLPlatformChooser(UserPlatformChooser.class);
 		settings.setVSync(true);
+//		settings.setRenderer("JOGL");
 		TestParticles app = new TestParticles();
 		app.setSettings(settings);
 		app.setShowSettings(true);

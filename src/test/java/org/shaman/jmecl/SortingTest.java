@@ -57,7 +57,7 @@ public class SortingTest extends AbstractOpenCLTest {
 	@Test
 	public void testRadixSort() {
 		int radix[] = {4, 8, 12};
-		int sizes[] = {1<<6, 5618, 1<<15, 47201, 34879};
+		int sizes[] = {1<<6, 5618, 1<<12};
 		RadixSort sort = new RadixSort(settings);
 		for (int r : radix) {
 			for (int size : sizes) {

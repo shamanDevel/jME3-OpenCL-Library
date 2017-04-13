@@ -8,8 +8,6 @@ package org.shaman.jmecl.test;
 import com.jme3.opencl.Device;
 import com.jme3.opencl.Platform;
 import com.jme3.opencl.PlatformChooser;
-import com.jme3.opencl.lwjgl.LwjglDevice;
-import com.jme3.opencl.lwjgl.LwjglPlatform;
 import java.util.Collections;
 import java.util.List;
 import java.util.Scanner;
